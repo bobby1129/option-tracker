@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期权机会扫描报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,215,0,0.2);
+        }
+        .header h1 {
+            font-size: 28px;
+            background: linear-gradient(90deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .header .subtitle { color: #aaa; font-size: 14px; }
+        .header .etf-price {
+            font-size: 42px;
+            font-weight: bold;
+            color: #ffd700;
+            margin: 15px 0;
+        }
+        .header .update-time { color: #888; font-size: 12px; }
+        
+        .config-box {
+            background: rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            font-size: 13px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .config-item { color: #aaa; }
+        .config-value { color: #ffd700; font-weight: 600; }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .summary-card .label { color: #aaa; font-size: 12px; margin-bottom: 8px; }
+        .summary-card .value { font-size: 24px; font-weight: bold; color: #4ade80; }
+        
+        .strategy-section {
+            background: rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,215,0,0.15);
+        }
+        .strategy-section h2 {
+            color: #ffd700;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            background: rgba(255,215,0,0.1);
+            color: #ffd700;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        tr:hover { background: rgba(255,255,255,0.05); }
+        .highlight { color: #4ade80; font-weight: 600; }
+        
+        .no-opportunity {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .card-header {
+            background: rgba(255, 215, 0, 0.1);
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-title {
+            color: #ffd700;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .card-badge {
+            background: #4ade80;
+            color: #000;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        
+        .card-body {
+            padding: 15px;
+        }
+        
+        .card-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .card-row:last-child {
+            border-bottom: none;
+        }
+        
+        .card-label {
+            color: #888;
+            font-size: 13px;
+        }
+        
+        .card-value {
+            color: #e0e0e0;
+            font-weight: 500;
+            font-size: 13px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 期权机会扫描报告</h1>
+            <div class="subtitle">科创50ETF (588000)</div>
+            <div class="etf-price">¥1.758</div>
+            <div class="update-time">扫描时间: 2026-09-23 03:57:38</div>
+        </div>
+        
+        <div class="config-box">
+            <div class="config-item">目标接货成本: <span class="config-value">¥1.65</span></div>
+            <div class="config-item">价差/卖put门槛: <span class="config-value">≥30%</span></div>
+            <div class="config-item">covered call门槛: <span class="config-value">≥15%</span></div>
+            <div class="config-item">持仓状态: <span class="config-value">无货</span></div>
+        </div>
+        
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">牛市价差机会</div>
+                <div class="value">3</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">卖put机会</div>
+                <div class="value">6</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">卖covered call机会</div>
+                <div class="value">0</div>
+            </div>
+        </div>
+
+        <div class="strategy-section">
+            <h2>📈 牛市价差（接货成本 &lt; ¥1.65，年化 ≥ 30%）</h2>
+<div class="cards-grid">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">176.1%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">买入腿</span>
+                        <span class="card-value">1.40 @ 0.3548</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">卖出腿</span>
+                        <span class="card-value">1.80 @ 0.1089</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">净支出</span>
+                        <span class="card-value">0.2459</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6459</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">最大收益</span>
+                        <span class="card-value">¥0.1541/张</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">164.1%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">买入腿</span>
+                        <span class="card-value">1.35 @ 0.3979</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">卖出腿</span>
+                        <span class="card-value">1.80 @ 0.1089</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">净支出</span>
+                        <span class="card-value">0.2890</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6390</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">最大收益</span>
+                        <span class="card-value">¥0.1610/张</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">149.0%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">买入腿</span>
+                        <span class="card-value">1.30 @ 0.4453</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">卖出腿</span>
+                        <span class="card-value">1.80 @ 0.1089</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">净支出</span>
+                        <span class="card-value">0.3364</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6364</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">最大收益</span>
+                        <span class="card-value">¥0.1636/张</span>
+                    </div>
+                </div>
+            </div>
+</div>
+        </div>
+
+        <div class="strategy-section">
+            <h2>📉 卖put（接货成本 &lt; ¥1.65，年化 ≥ 30%）</h2>
+<div class="cards-grid">
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">215.8%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.75</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.1403</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6097</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥1,403</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-10-28（34天）</span>
+                    <span class="card-badge">206.8%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.70</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.0508</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6492</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥508</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">176.9%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.70</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.1150</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.5850</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥1,150</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">142.3%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.65</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.0925</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.5575</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥925</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-10-28（34天）</span>
+                    <span class="card-badge">137.6%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.65</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.0338</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.6162</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥338</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-title">2026-12-23（90天）</span>
+                    <span class="card-badge">112.0%</span>
+                </div>
+                <div class="card-body">
+                    <div class="card-row">
+                        <span class="card-label">行权价</span>
+                        <span class="card-value">1.60</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金</span>
+                        <span class="card-value">0.0728</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">接货成本</span>
+                        <span class="card-value highlight">¥1.5272</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">资金占用</span>
+                        <span class="card-value">¥2,637</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">权利金收入</span>
+                        <span class="card-value">¥728</span>
+                    </div>
+                </div>
+            </div>
+</div>
+        </div>
+
+        <div class="strategy-section">
+            <h2>📊 卖covered call（年化 ≥ 15%）</h2>
+
+            <div class="no-opportunity">当前无持仓，无法卖covered call</div>
+
+        </div>
+
+        <div class="footer">
+            数据源: 新浪财经 · 扫描时间: 2026-09-23 03:57:38
+        </div>
+    </div>
+</body>
+</html>

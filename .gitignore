@@ -1,0 +1,3 @@
+__pycache__/
+*.pyc
+reports/report_*.html

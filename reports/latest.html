@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>期权组合跟踪报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        
+        .header {
+            text-align: center;
+            padding: 30px 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,215,0,0.2);
+        }
+        .header h1 {
+            font-size: 28px;
+            background: linear-gradient(90deg, #ffd700, #ffed4e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+        }
+        .header .subtitle {
+            color: #aaa;
+            font-size: 14px;
+        }
+        .header .etf-price {
+            font-size: 42px;
+            font-weight: bold;
+            color: #ffd700;
+            margin: 15px 0;
+        }
+        .header .update-time {
+            color: #888;
+            font-size: 12px;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .summary-card {
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .summary-card .label {
+            color: #aaa;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .summary-card .value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .summary-card .value.profit { color: #4ade80; }
+        .summary-card .value.loss { color: #f87171; }
+        .summary-card .value.neutral { color: #fbbf24; }
+        
+        .position-card {
+            background: rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,215,0,0.15);
+        }
+        .position-card h2 {
+            color: #ffd700;
+            font-size: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .position-card h2 .badge {
+            background: rgba(255,215,0,0.2);
+            color: #ffd700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+        }
+        
+        .legs-section {
+            background: rgba(0,0,0,0.2);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .legs-section h3 {
+            color: #aaa;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .legs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .legs-table th {
+            background: rgba(255,215,0,0.1);
+            color: #ffd700;
+            padding: 10px;
+            text-align: left;
+            font-weight: 600;
+        }
+        .legs-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .legs-table .direction-buy { color: #4ade80; }
+        .legs-table .direction-sell { color: #f87171; }
+        .legs-table .price-change { font-size: 11px; margin-left: 5px; }
+        .legs-table .price-up { color: #4ade80; }
+        .legs-table .price-down { color: #f87171; }
+        
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .metric {
+            background: rgba(0,0,0,0.3);
+            padding: 12px;
+            border-radius: 8px;
+        }
+        .metric .label {
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        .metric .value {
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .milestones {
+            background: rgba(74,222,128,0.1);
+            border: 1px solid rgba(74,222,128,0.3);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+        .milestones .milestone-item {
+            color: #4ade80;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        .milestones .milestone-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .suggestions {
+            background: rgba(251,191,36,0.1);
+            border: 1px solid rgba(251,191,36,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .suggestions h4 {
+            color: #fbbf24;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        .suggestions .suggestion-item {
+            font-size: 13px;
+            margin-bottom: 6px;
+            color: #e0e0e0;
+        }
+        .suggestions .suggestion-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏠 期权组合跟踪报告</h1>
+            <div class="subtitle">科创50ETF (588000) · 牛市看涨价差</div>
+            <div class="etf-price">¥1.758</div>
+            <div class="update-time">更新时间: 2026-09-23 15:00:00</div>
+        </div>
+        
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">总投入</div>
+                <div class="value neutral">¥56,800</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">当前价值</div>
+                <div class="value neutral">¥56,900</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">浮动盈亏</div>
+                <div class="value profit">
+                    +¥100
+                </div>
+            </div>
+        </div>
+
+        <div class="position-card">
+            <h2>
+                组合 #1
+                <span class="badge">1.45/1.75 价差</span>
+                <span class="badge">剩34天</span>
+            </h2>
+            
+            <div class="legs-section">
+                <h3>持仓明细</h3>
+                <table class="legs-table">
+                    <thead>
+                        <tr>
+                            <th>方向</th>
+                            <th>行权价</th>
+                            <th>开仓价</th>
+                            <th>当前价</th>
+                            <th>变化</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="direction-buy">买入</td>
+                            <td>1.45</td>
+                            <td>0.3011</td>
+                            <td>0.3093</td>
+                            <td>
+                                <span class="price-change price-up">
+                                    +2.7%
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="direction-sell">卖出</td>
+                            <td>1.75</td>
+                            <td>0.0739</td>
+                            <td>0.0767</td>
+                            <td>
+                                <span class="price-change price-up">
+                                    +3.8%
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric">
+                    <div class="label">开仓净支出</div>
+                    <div class="value">¥22,720</div>
+                </div>
+                <div class="metric">
+                    <div class="label">当前价值</div>
+                    <div class="value">¥23,260</div>
+                </div>
+                <div class="metric">
+                    <div class="label">浮动盈亏</div>
+                    <div class="value profit">+¥540 (+2.4%)</div>
+                </div>
+                <div class="metric">
+                    <div class="label">接货成本</div>
+                    <div class="value">¥1.6772</div>
+                </div>
+                <div class="metric">
+                    <div class="label">盈亏平衡</div>
+                    <div class="value">¥1.6772</div>
+                </div>
+                <div class="metric">
+                    <div class="label">安全距离</div>
+                    <div class="value neutral">+4.6%</div>
+                </div>
+                <div class="metric">
+                    <div class="label">最大收益</div>
+                    <div class="value profit">¥7,280</div>
+                </div>
+                <div class="metric">
+                    <div class="label">年化收益率</div>
+                    <div class="value profit">+25.5%</div>
+                </div>
+            </div>
+
+            <div class="suggestions">
+                <h4>💡 操作建议</h4>
+                <div class="suggestion-item">⚠️ 安全距离仅4.6%，接近盈亏平衡点</div>
+            </div>
+        </div>
+
+        <div class="position-card">
+            <h2>
+                组合 #2
+                <span class="badge">1.3/1.8 价差</span>
+                <span class="badge">剩90天</span>
+            </h2>
+            
+            <div class="legs-section">
+                <h3>持仓明细</h3>
+                <table class="legs-table">
+                    <thead>
+                        <tr>
+                            <th>方向</th>
+                            <th>行权价</th>
+                            <th>开仓价</th>
+                            <th>当前价</th>
+                            <th>变化</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="direction-buy">买入</td>
+                            <td>1.30</td>
+                            <td>0.4458</td>
+                            <td>0.4453</td>
+                            <td>
+                                <span class="price-change price-down">
+                                    -0.1%
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="direction-sell">卖出</td>
+                            <td>1.80</td>
+                            <td>0.1050</td>
+                            <td>0.1089</td>
+                            <td>
+                                <span class="price-change price-up">
+                                    +3.7%
+                                </span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="metrics-grid">
+                <div class="metric">
+                    <div class="label">开仓净支出</div>
+                    <div class="value">¥34,080</div>
+                </div>
+                <div class="metric">
+                    <div class="label">当前价值</div>
+                    <div class="value">¥33,640</div>
+                </div>
+                <div class="metric">
+                    <div class="label">浮动盈亏</div>
+                    <div class="value loss">¥-440 (-1.3%)</div>
+                </div>
+                <div class="metric">
+                    <div class="label">接货成本</div>
+                    <div class="value">¥1.6408</div>
+                </div>
+                <div class="metric">
+                    <div class="label">盈亏平衡</div>
+                    <div class="value">¥1.6408</div>
+                </div>
+                <div class="metric">
+                    <div class="label">安全距离</div>
+                    <div class="value profit">+6.7%</div>
+                </div>
+                <div class="metric">
+                    <div class="label">最大收益</div>
+                    <div class="value profit">¥15,920</div>
+                </div>
+                <div class="metric">
+                    <div class="label">年化收益率</div>
+                    <div class="value loss">-5.2%</div>
+                </div>
+            </div>
+
+            <div class="suggestions">
+                <h4>💡 操作建议</h4>
+                <div class="suggestion-item">📊 当前状态正常，建议继续持有，定期跟踪</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            数据源: 新浪财经 · 更新时间: 2026-09-23 15:00:00
+        </div>
+    </div>
+</body>
+</html>
