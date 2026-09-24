@@ -175,7 +175,8 @@ option-tracker/
 ├── scripts/
 │   ├── fetch_chain_sina.py           # 实时期权链抓取（新浪T型报价接口, 纯requests）★cron/扫描入口
 │   ├── report_generator.py         # 持仓报告生成器（cron 15:00）
-│   ├── scanner.py                  # 机会扫描器（只读data缓存, 扫描前先跑fetch_chain_sina.py）
+│   ├── scanner.py                  # 机会扫描器（只读data缓存, 扫描前先跑fetch_chain_sina.py; 内联生成opportunities.html）
+│   ├── opportunities_report.py     # 机会报告HTML生成器（396行完整实现, 但当前零引用死代码—scanner已内联自己的版本）
 │   ├── data_fetcher.py             # ETF价格获取库（功能完整, 当前未被其它脚本引用）
 │   └── option_pricing.py           # 期权定价Black-Scholes库（功能完整, 当前未被其它脚本引用）
 └── README.md
