@@ -103,8 +103,10 @@ python3 scripts/fetch_chain_sina.py --verify  # 带字段验证输出
 ```
 
 纯 requests 实现，无需浏览器。接口链（2026-09-24 实测验证）：
-1. `StockOptionService.getRemainderDay?cate=科创50&date=YYYY-MM` → 探测合约月份与到期日（cate=科创50 是 588000 华夏，"科创板50"是 588080 易方达，勿混）
-2. `hq.sinajs.cn/list=OP_UP_588000{YYMM},OP_DOWN_588000{YYMM}` → 该月合约代码列表（cateId 去掉字母 C）
+1. 合约月份探测：逐月查 `hq.sinajs.cn/list=OP_UP_588000{YYMM}` 是否非空（有合约代码即有合约，权威）；到期日=到期月第四个周三（本地计算，实测与新浪接口100%吻合）；排除已过期月
+   ⚠️ 不用 `getRemainderDay` 探测月份——实测对某些月 flaky 返回 None（曾漏掉 2026-11），且不排除过期月（曾混入已过期的 09-23）
+   ⚠️ cate 命名陷阱："科创50"=588000 华夏，"科创板50"=588080 易方达，勿混
+2. `hq.sinajs.cn/list=OP_UP_588000{YYMM},OP_DOWN_588000{YYMM}` → 该月合约代码列表（OP_UP=calls，OP_DOWN=puts）
 3. `hq.sinajs.cn/list=CON_OP_xxx,...` → 逐合约实时行情（bid/last/ask/行权价/持仓量）
 4. `hq.sinajs.cn/list=sh588000` → ETF 现价
 
@@ -176,9 +178,7 @@ option-tracker/
 │   ├── fetch_chain_sina.py           # 实时期权链抓取（新浪T型报价接口, 纯requests）★cron/扫描入口
 │   ├── report_generator.py         # 持仓报告生成器（cron 15:00）
 │   ├── scanner.py                  # 机会扫描器（只读data缓存, 扫描前先跑fetch_chain_sina.py; 内联生成opportunities.html）
-│   ├── opportunities_report.py     # 机会报告HTML生成器（396行完整实现, 但当前零引用死代码—scanner已内联自己的版本）
-│   ├── data_fetcher.py             # ETF价格获取库（功能完整, 当前未被其它脚本引用）
-│   └── option_pricing.py           # 期权定价Black-Scholes库（功能完整, 当前未被其它脚本引用）
+│   └── option_pricing.py           # 期权定价Black-Scholes库（功能完整, 当前未被其它脚本引用, 独有能力保留）
 └── README.md
 ```
 
@@ -187,7 +187,10 @@ option-tracker/
 ### 2026-09-24（清理）
 
 - 🗑️ 删除4个失效脚本：`fetch_option_data.py` / `fetch_option_simple.py`（Playwright页面解析, 返回nan且写坏缓存）、`option_fetcher.py` / `option_data_fetcher.py`（期权抓取函数是空壳pass/return None, 未实现）
-- 抓取统一为 `fetch_chain_sina.py`；`data_fetcher.py` / `option_pricing.py` 为功能完整但当前零引用的库（非失效）, 暂留
+- 🗑️ 删除2个零引用重复实现：`opportunities_report.py`（宽表格版报告, scanner内联的卡片版符合用户偏好且已在用）、`data_fetcher.py`（ETF价抓取, fetch_chain_sina.py已自含）
+- ✅ 保留 `option_pricing.py`（Black-Scholes/Greeks, 项目独有能力, 无重复）
+- 🐛 修复月份探测bug：弃用flaky的getRemainderDay（曾漏掉2026-11月、混入已过期的09-23），改用OP_UP合约列表逐月探测（权威）+ 本地计算第四个周三到期日 + 排除已过期月。连跑3次结果一致
+- 抓取统一为 `fetch_chain_sina.py`
 
 ### 2026-09-24
 

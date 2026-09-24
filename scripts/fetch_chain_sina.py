@@ -4,10 +4,12 @@
 替代 fetch_option_data.py 的浏览器方案 — 旧方案解析页面失败(返回nan)且会把坏数据写入latest.json
 
 接口链 (2026-09-24 实测验证):
-1. 合约月份列表: StockOptionService.getRemainderDay?cate=科创50&date=YYYY-MM → expireDay
-   (cateList里"科创50"=588000华夏, "科创板50"=588080易方达, 别搞混)
+1. 合约月份探测: 逐月查 OP_UP_588000{YYMM} 是否非空(有合约代码即有合约, 权威)
+   到期日 = 到期月第四个周三(本地计算, 实测与新浪接口100%吻合), 排除已过期月
+   ⚠️ 不用 getRemainderDay 探测月份: 对某些月flaky返回None(2026-11漏掉), 且不排除过期月
+   ⚠️ cate命名: "科创50"=588000华夏, "科创板50"=588080易方达, 别搞混
 2. 合约代码列表: https://hq.sinajs.cn/list=OP_UP_588000{YYMM},OP_DOWN_588000{YYMM}
-   ⚠️ cateId要去掉字母C: 588000C2610 → 5880002610
+   (OP_UP=calls, OP_DOWN=puts; short = ETF_CODE + YYMM, 无需带字母C)
 3. 合约实时行情: https://hq.sinajs.cn/list=CON_OP_xxx,CON_OP_yyy,...
 4. ETF现价: https://hq.sinajs.cn/list=sh588000 (idx3=现价)
 
@@ -21,7 +23,7 @@ CON_OP_ 字段布局 (逗号分隔, 已在2026-09-24打印验证):
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import requests
@@ -46,36 +48,44 @@ def sina_hq(symbols):
     return out
 
 
+def fourth_wednesday(y, m):
+    """上交所ETF期权到期日 = 到期月第四个周三
+    2026-09/10/11/12 实测计算值与新浪接口返回100%吻合"""
+    d = date(y, m, 1)
+    while d.weekday() != 2:  # 2 = 周三
+        d += timedelta(days=1)
+    return d + timedelta(days=21)
+
+
+def month_has_contracts(short):
+    """探测某月是否有合约: OP_UP_{short} 非空即有(权威来源, 有合约代码就是真有合约)"""
+    lst = sina_hq([f"OP_UP_{short}"])
+    return bool(lst.get(f"OP_UP_{short}"))
+
+
 def get_expiry_months():
-    """枚举未来月份, 用 getRemainderDay 探测哪些月份有588000合约
-    ⚠️ 不能用 getStockName 的 cateList/contractMonth zip配对 — 实测两列表长度不等(6vs5)会错配"""
+    """枚举未来月份, 探测最近 N_MONTHS 个有效合约月
+    返回 [(ym, expiry, short), ...]  short = 合约代码前缀(588000+YYMM)
+
+    ⚠️ 弃用 getRemainderDay 接口探测月份: 实测对某些月flaky返回None(2026-11返回None但实际有9个合约),
+       且不排除已过期月(2026-09-23已过期仍返回)。改用 OP_UP 合约列表探测(权威) + 本地算第四个周三到期日。
+    ⚠️ 不能用 getStockName 的 cateList/contractMonth zip配对 — 实测两列表长度不等(6vs5)会错配。
+    """
     months = []
+    today = date.today()
     now = datetime.now()
-    for i in range(10):  # 探测未来10个月
+    for i in range(12):  # 探测未来12个月(合约月可能不连续, 中间有空档如2701/2702)
         y = now.year + (now.month - 1 + i) // 12
         m = (now.month - 1 + i) % 12 + 1
-        ym = f"{y}-{m:02d}"
-        try:
-            r = requests.get(
-                "https://stock.finance.sina.com.cn/futures/api/openapi.php/"
-                f"StockOptionService.getRemainderDay?exchange=null&cate=科创50&date={ym}&dpc=1",
-                headers=HEADERS, timeout=10)
-            d = r.json()["result"]["data"]
-            if d.get("expireDay") and d.get("stockId") == ETF_CODE:
-                months.append(ym)
-        except Exception:
+        expiry = fourth_wednesday(y, m)
+        if expiry < today:  # 排除已过期月份
             continue
+        short = f"{ETF_CODE}{str(y)[2:]}{m:02d}"  # 588000 + 2610
+        if month_has_contracts(short):
+            months.append((f"{y}-{m:02d}", expiry.isoformat(), short))
+        if len(months) >= N_MONTHS:
+            break
     return months
-
-
-def month_to_expiry(ym):
-    """2026-10 → 2026-10-28 (第四个周三; 用 getRemainderDay 实测接口拿准确到期日)"""
-    r = requests.get(
-        "https://stock.finance.sina.com.cn/futures/api/openapi.php/"
-        f"StockOptionService.getRemainderDay?exchange=null&cate=科创50&date={ym}&dpc=1",
-        headers=HEADERS, timeout=10)
-    d = r.json()["result"]["data"]
-    return d["expireDay"], d["cateId"]
 
 
 def fetch_chain(verify=False):
@@ -87,13 +97,9 @@ def fetch_chain(verify=False):
     # 尾部为 ...,2026-09-24,11:30:00,00,(空串) → [-4]=日期 [-3]=时间
     quote_time = f"{f[-4]} {f[-3]}"
 
-    months = get_expiry_months()[:N_MONTHS]
+    months = get_expiry_months()  # [(ym, expiry, short), ...]
     contracts = {}
-    for ym in months:
-        expiry, cate_id = month_to_expiry(ym)
-        if not expiry:
-            continue
-        short = cate_id.replace("C", "")  # 588000C2610 → 5880002610
+    for ym, expiry, short in months:
         lst = sina_hq([f"OP_UP_{short}", f"OP_DOWN_{short}"])
         calls = [c for c in lst.get(f"OP_UP_{short}", []) if c]
         puts = [c for c in lst.get(f"OP_DOWN_{short}", []) if c]
