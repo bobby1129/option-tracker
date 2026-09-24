@@ -109,7 +109,7 @@ python3 scripts/fetch_chain_sina.py --verify  # 带字段验证输出
 4. `hq.sinajs.cn/list=sh588000` → ETF 现价
 
 保护机制：合约为空时拒绝写入 latest.json（防止坏数据覆盖）。
-⚠️ 旧的 `fetch_option_data.py`（Playwright 解析页面）已失效（返回 nan 且会写坏 latest），勿用。
+ℹ️ 旧的 Playwright 页面解析方案（`fetch_option_data.py` / `fetch_option_simple.py`）已失效并删除（返回 nan 且会写坏 latest），统一改用本脚本。
 ⚠️ `scanner.py` 只读缓存文件不抓数据，**扫描前必须先跑 fetch_chain_sina.py**。
 
 ### 扫描机会
