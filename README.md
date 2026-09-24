@@ -82,9 +82,9 @@
 
 ### option_chain_latest.json
 
-期权链数据，包含10月和12月合约的看涨/看跌期权价格。
+期权链数据，最近3个合约月的看涨/看跌期权实时价格（last/bid/ask/行权价/持仓量）。
 
-**数据来源**：新浪财经期权T型报价（通过浏览器抓取）
+**数据来源**：新浪财经期权T型报价接口（`fetch_chain_sina.py` 纯 requests 抓取，见"更新期权数据"）
 
 ## 使用方法
 
@@ -95,67 +95,28 @@ cd /home/cat/projects/option-tracker
 python3 scripts/report_generator.py
 ```
 
+### 更新期权数据
+
+```bash
+python3 scripts/fetch_chain_sina.py           # 抓实时期权链 → data/option_chain_latest.json
+python3 scripts/fetch_chain_sina.py --verify  # 带字段验证输出
+```
+
+纯 requests 实现，无需浏览器。接口链（2026-09-24 实测验证）：
+1. `StockOptionService.getRemainderDay?cate=科创50&date=YYYY-MM` → 探测合约月份与到期日（cate=科创50 是 588000 华夏，"科创板50"是 588080 易方达，勿混）
+2. `hq.sinajs.cn/list=OP_UP_588000{YYMM},OP_DOWN_588000{YYMM}` → 该月合约代码列表（cateId 去掉字母 C）
+3. `hq.sinajs.cn/list=CON_OP_xxx,...` → 逐合约实时行情（bid/last/ask/行权价/持仓量）
+4. `hq.sinajs.cn/list=sh588000` → ETF 现价
+
+保护机制：合约为空时拒绝写入 latest.json（防止坏数据覆盖）。
+⚠️ 旧的 `fetch_option_data.py`（Playwright 解析页面）已失效（返回 nan 且会写坏 latest），勿用。
+⚠️ `scanner.py` 只读缓存文件不抓数据，**扫描前必须先跑 fetch_chain_sina.py**。
+
 ### 扫描机会
 
 ```bash
-python3 scripts/scanner.py
+python3 scripts/fetch_chain_sina.py && python3 scripts/scanner.py
 ```
-
-### 更新期权数据
-
-1. 用浏览器访问：https://stock.finance.sina.com.cn/option/quotes.html
-2. 选择"ETF期权" → "科创50"
-3. 切换到目标月份（10月、12月）
-4. 用JavaScript提取数据：
-
-```javascript
-(() => {
-    const tables = document.querySelectorAll('table');
-    const result = {calls: [], puts: [], strikes: []};
-
-    if (tables[0]) {
-        const rows = tables[0].querySelectorAll('tbody tr');
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 6) {
-                result.calls.push({
-                    bid: parseFloat(cells[1].textContent),
-                    last: parseFloat(cells[2].textContent),
-                    ask: parseFloat(cells[3].textContent),
-                    oi: cells[5].textContent.trim()
-                });
-            }
-        });
-    }
-
-    if (tables[1]) {
-        const rows = tables[1].querySelectorAll('tr');
-        rows.forEach(row => {
-            const cell = row.querySelector('td');
-            if (cell) result.strikes.push(parseFloat(cell.textContent));
-        });
-    }
-
-    if (tables[2]) {
-        const rows = tables[2].querySelectorAll('tbody tr');
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('td');
-            if (cells.length >= 6) {
-                result.puts.push({
-                    bid: parseFloat(cells[1].textContent),
-                    last: parseFloat(cells[2].textContent),
-                    ask: parseFloat(cells[3].textContent),
-                    oi: cells[5].textContent.trim()
-                });
-            }
-        });
-    }
-
-    return JSON.stringify(result);
-})()
-```
-
-5. 将结果保存到 `data/option_chain_latest.json`
 
 ## 自动化任务
 
@@ -165,8 +126,15 @@ python3 scripts/scanner.py
    - 任务ID：`52da0bfa2a5c`
    - 生成持仓报告并发送摘要
 
-2. **机会扫描**（每小时）
-   - 待实现
+2. **机会扫描-早盘**（每个交易日9:40）
+   - 任务ID：`56caf7207b93`
+   - 先 `fetch_chain_sina.py` 抓实时期权链，再 `scanner.py` 扫描，发送Top5摘要
+
+3. **机会扫描-午盘**（每个交易日14:00）
+   - 任务ID：`effeda3bccc8`
+   - 同上
+
+所有任务已固定模型 qwen3.7-plus（custom provider），全局模型切换不会导致跳过。
 
 ## 操作建议原则
 
@@ -205,14 +173,22 @@ option-tracker/
 │   ├── latest.html                 # 持仓报告
 │   └── opportunities.html          # 机会扫描报告
 ├── scripts/
+│   ├── fetch_chain_sina.py           # 实时期权链抓取（新浪T型报价接口, 纯requests）
 │   ├── report_generator.py         # 持仓报告生成器
-│   ├── scanner.py                  # 机会扫描器
+│   ├── scanner.py                  # 机会扫描器（只读data缓存, 扫描前先抓取）
 │   ├── data_fetcher.py             # ETF价格获取
 │   └── option_pricing.py           # 期权定价（Black-Scholes）
 └── README.md
 ```
 
 ## 更新日志
+
+### 2026-09-24
+
+- ✅ 修复扫描用过期数据的bug：`scanner.py` 只读 `option_chain_latest.json` 缓存，此前 cron 只跑 scanner，导致每天扫的都是旧行情（9/24 发现缓存是 9/23 15:00 的）
+- ✅ 新增 `fetch_chain_sina.py`：纯 requests 实时抓取新浪期权链（合约月份探测→合约代码列表→逐合约行情），输出兼容旧格式；旧 Playwright 方案 `fetch_option_data.py` 已失效弃用
+- ✅ 两个扫描 cron（早盘9:40/午盘14:00）prompt 更新为"先抓取再扫描"
+- ✅ 全部 cron 任务固定模型 qwen3.7-plus，避免全局模型漂移触发跳过
 
 ### 2026-09-23
 
