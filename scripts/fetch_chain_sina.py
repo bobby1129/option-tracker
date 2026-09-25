@@ -131,8 +131,32 @@ def fetch_chain(verify=False):
     }
 
 
+def is_trading_day():
+    """交易日检查：周末直接否；工作日对比新浪上证指数行情日期与今天。
+    节假日休市时新浪返回的仍是上一交易日日期 → 判定非交易日。
+    行情接口异常时保守放行（宁可抓旧数据也不误杀正常交易日）。"""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False, '周末休市'
+    try:
+        q = sina_hq(['sh000001']).get('sh000001')
+        if not q or len(q) < 31:
+            raise ValueError('新浪行情字段缺失')
+        quote_date = q[30]  # YYYY-MM-DD
+        today = now.strftime('%Y-%m-%d')
+        if quote_date == today:
+            return True, f'交易日（行情日期 {quote_date}）'
+        return False, f'非交易日：行情日期为 {quote_date}，今天是 {today}（节假日休市）'
+    except Exception as e:
+        return True, f'⚠ 行情接口异常({e})，保守放行按交易日处理'
+
+
 def main():
     verify = "--verify" in sys.argv
+    ok, reason = is_trading_day()
+    if not ok:
+        print(f"NON_TRADING_DAY: {reason}")
+        sys.exit(0)
     print("抓取新浪期权链 (科创50ETF 588000)...")
     data = fetch_chain(verify=verify)
     if not data["contracts"]:

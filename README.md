@@ -114,6 +114,8 @@ python3 scripts/fetch_chain_sina.py --verify  # 带字段验证输出
 ℹ️ 旧的 Playwright 页面解析方案（`fetch_option_data.py` / `fetch_option_simple.py`）已失效并删除（返回 nan 且会写坏 latest），统一改用本脚本。
 ⚠️ `scanner.py` 只读缓存文件不抓数据，**扫描前必须先跑 fetch_chain_sina.py**。
 
+⚠️ `fetch_chain_sina.py` 入口自带交易日检查：周末/节假日休市时打印 `NON_TRADING_DAY: <原因>` 并以退出码0结束（不写缓存）。cron任务见此输出应回复 `[SILENT]` 完全静默，不发任何消息。
+
 ### 扫描机会
 
 ```bash

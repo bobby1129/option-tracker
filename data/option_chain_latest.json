@@ -1,244 +1,244 @@
 {
-  "etf_price": 1.728,
-  "timestamp": "2026-09-24 11:30:00",
+  "etf_price": 1.713,
+  "timestamp": "2026-09-24 15:34:59",
   "contracts": {
     "2026-10-28": {
       "calls": {
         "1.4": {
-          "last": 0.3262,
-          "bid": 0.3202,
-          "ask": 0.33,
-          "prev_close": 0.3482,
-          "volume_oi": 917,
+          "last": 0.3144,
+          "bid": 0.3097,
+          "ask": 0.3185,
+          "prev_close": 0.3523,
+          "volume_oi": 1018,
           "symbol": "CON_OP_10012419",
-          "quote_time": "2026-09-24 11:25:25"
+          "quote_time": "2026-09-24 14:55:35"
         },
         "1.45": {
-          "last": 0.279,
-          "bid": 0.2761,
-          "ask": 0.294,
-          "prev_close": 0.3055,
-          "volume_oi": 2255,
+          "last": 0.2684,
+          "bid": 0.2666,
+          "ask": 0.2711,
+          "prev_close": 0.3093,
+          "volume_oi": 2292,
           "symbol": "CON_OP_10012413",
-          "quote_time": "2026-09-24 11:25:05"
+          "quote_time": "2026-09-24 14:56:20"
         },
         "1.5": {
-          "last": 0.2345,
-          "bid": 0.2311,
-          "ask": 0.2387,
-          "prev_close": 0.2567,
-          "volume_oi": 6608,
+          "last": 0.2228,
+          "bid": 0.222,
+          "ask": 0.2233,
+          "prev_close": 0.261,
+          "volume_oi": 6744,
           "symbol": "CON_OP_10012363",
-          "quote_time": "2026-09-24 11:29:09"
+          "quote_time": "2026-09-24 14:56:41"
         },
         "1.55": {
-          "last": 0.192,
-          "bid": 0.1884,
-          "ask": 0.1955,
-          "prev_close": 0.2134,
-          "volume_oi": 7719,
+          "last": 0.1804,
+          "bid": 0.18,
+          "ask": 0.1831,
+          "prev_close": 0.2157,
+          "volume_oi": 7730,
           "symbol": "CON_OP_10012364",
-          "quote_time": "2026-09-24 11:29:12"
+          "quote_time": "2026-09-24 14:56:33"
         },
         "1.6": {
-          "last": 0.154,
-          "bid": 0.1527,
-          "ask": 0.155,
-          "prev_close": 0.1707,
-          "volume_oi": 15476,
+          "last": 0.139,
+          "bid": 0.138,
+          "ask": 0.139,
+          "prev_close": 0.174,
+          "volume_oi": 15580,
           "symbol": "CON_OP_10012365",
-          "quote_time": "2026-09-24 11:29:43"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.65": {
-          "last": 0.1187,
-          "bid": 0.1181,
-          "ask": 0.1195,
-          "prev_close": 0.1346,
-          "volume_oi": 26787,
+          "last": 0.105,
+          "bid": 0.105,
+          "ask": 0.1072,
+          "prev_close": 0.1369,
+          "volume_oi": 27505,
           "symbol": "CON_OP_10012366",
-          "quote_time": "2026-09-24 11:29:55"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "1.7": {
-          "last": 0.09,
-          "bid": 0.0887,
-          "ask": 0.09,
-          "prev_close": 0.1014,
-          "volume_oi": 54176,
+          "last": 0.0783,
+          "bid": 0.0781,
+          "ask": 0.0784,
+          "prev_close": 0.1054,
+          "volume_oi": 59287,
           "symbol": "CON_OP_10012367",
-          "quote_time": "2026-09-24 11:29:59"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.75": {
-          "last": 0.0656,
-          "bid": 0.0651,
-          "ask": 0.0657,
-          "prev_close": 0.075,
-          "volume_oi": 101728,
+          "last": 0.0553,
+          "bid": 0.0553,
+          "ask": 0.0557,
+          "prev_close": 0.0767,
+          "volume_oi": 105818,
           "symbol": "CON_OP_10012368",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.8": {
-          "last": 0.0469,
-          "bid": 0.0466,
-          "ask": 0.047,
-          "prev_close": 0.0551,
-          "volume_oi": 91725,
+          "last": 0.039,
+          "bid": 0.0389,
+          "ask": 0.039,
+          "prev_close": 0.0558,
+          "volume_oi": 94445,
           "symbol": "CON_OP_10012369",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.85": {
-          "last": 0.0322,
-          "bid": 0.032,
-          "ask": 0.033,
+          "last": 0.0271,
+          "bid": 0.0268,
+          "ask": 0.0271,
           "prev_close": 0.0398,
-          "volume_oi": 60184,
+          "volume_oi": 63054,
           "symbol": "CON_OP_10012370",
-          "quote_time": "2026-09-24 11:29:52"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.9": {
-          "last": 0.0224,
-          "bid": 0.022,
-          "ask": 0.0223,
-          "prev_close": 0.027,
-          "volume_oi": 64788,
+          "last": 0.0175,
+          "bid": 0.0174,
+          "ask": 0.0175,
+          "prev_close": 0.0267,
+          "volume_oi": 66353,
           "symbol": "CON_OP_10012371",
-          "quote_time": "2026-09-24 11:29:57"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "1.95": {
-          "last": 0.0143,
-          "bid": 0.014,
-          "ask": 0.0143,
-          "prev_close": 0.0178,
-          "volume_oi": 40200,
+          "last": 0.0111,
+          "bid": 0.0111,
+          "ask": 0.0112,
+          "prev_close": 0.0179,
+          "volume_oi": 44530,
           "symbol": "CON_OP_10012401",
-          "quote_time": "2026-09-24 11:29:54"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "2.0": {
-          "last": 0.0093,
-          "bid": 0.0093,
-          "ask": 0.0097,
-          "prev_close": 0.0125,
-          "volume_oi": 58400,
+          "last": 0.0076,
+          "bid": 0.0074,
+          "ask": 0.0076,
+          "prev_close": 0.0124,
+          "volume_oi": 63350,
           "symbol": "CON_OP_10012402",
-          "quote_time": "2026-09-24 11:29:52"
+          "quote_time": "2026-09-24 15:00:00"
         }
       },
       "puts": {
         "1.4": {
-          "last": 0.0034,
-          "bid": 0.0034,
-          "ask": 0.0035,
-          "prev_close": 0.0028,
-          "volume_oi": 18703,
+          "last": 0.0036,
+          "bid": 0.0032,
+          "ask": 0.0036,
+          "prev_close": 0.0031,
+          "volume_oi": 21584,
           "symbol": "CON_OP_10012420",
-          "quote_time": "2026-09-24 11:29:55"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.45": {
-          "last": 0.006,
-          "bid": 0.0056,
-          "ask": 0.0061,
-          "prev_close": 0.0047,
-          "volume_oi": 19609,
+          "last": 0.0063,
+          "bid": 0.0063,
+          "ask": 0.0064,
+          "prev_close": 0.0048,
+          "volume_oi": 25411,
           "symbol": "CON_OP_10012414",
-          "quote_time": "2026-09-24 11:29:40"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.5": {
-          "last": 0.01,
-          "bid": 0.0099,
-          "ask": 0.0106,
+          "last": 0.0109,
+          "bid": 0.0106,
+          "ask": 0.0109,
           "prev_close": 0.0084,
-          "volume_oi": 38140,
+          "volume_oi": 40306,
           "symbol": "CON_OP_10012372",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.55": {
-          "last": 0.0173,
-          "bid": 0.0161,
-          "ask": 0.0179,
-          "prev_close": 0.0137,
-          "volume_oi": 47616,
+          "last": 0.019,
+          "bid": 0.0183,
+          "ask": 0.019,
+          "prev_close": 0.0134,
+          "volume_oi": 51348,
           "symbol": "CON_OP_10012373",
-          "quote_time": "2026-09-24 11:29:40"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.6": {
-          "last": 0.0276,
-          "bid": 0.0275,
-          "ask": 0.0282,
-          "prev_close": 0.0233,
-          "volume_oi": 49544,
+          "last": 0.0298,
+          "bid": 0.0298,
+          "ask": 0.0299,
+          "prev_close": 0.0215,
+          "volume_oi": 57888,
           "symbol": "CON_OP_10012374",
-          "quote_time": "2026-09-24 11:29:52"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "1.65": {
-          "last": 0.0428,
-          "bid": 0.0424,
-          "ask": 0.0426,
-          "prev_close": 0.0347,
-          "volume_oi": 60276,
+          "last": 0.0456,
+          "bid": 0.0456,
+          "ask": 0.0457,
+          "prev_close": 0.0338,
+          "volume_oi": 65718,
           "symbol": "CON_OP_10012375",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.7": {
-          "last": 0.0628,
-          "bid": 0.0628,
-          "ask": 0.0638,
-          "prev_close": 0.0531,
-          "volume_oi": 66196,
+          "last": 0.0676,
+          "bid": 0.0674,
+          "ask": 0.0676,
+          "prev_close": 0.0508,
+          "volume_oi": 68286,
           "symbol": "CON_OP_10012376",
-          "quote_time": "2026-09-24 11:29:52"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.75": {
-          "last": 0.0893,
-          "bid": 0.0893,
-          "ask": 0.09,
-          "prev_close": 0.0758,
-          "volume_oi": 71801,
+          "last": 0.0951,
+          "bid": 0.0951,
+          "ask": 0.0952,
+          "prev_close": 0.0737,
+          "volume_oi": 72365,
           "symbol": "CON_OP_10012377",
-          "quote_time": "2026-09-24 11:29:56"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.8": {
-          "last": 0.1196,
-          "bid": 0.1196,
-          "ask": 0.1216,
-          "prev_close": 0.1054,
-          "volume_oi": 41769,
+          "last": 0.1292,
+          "bid": 0.127,
+          "ask": 0.1292,
+          "prev_close": 0.1015,
+          "volume_oi": 41879,
           "symbol": "CON_OP_10012378",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.85": {
-          "last": 0.1556,
-          "bid": 0.1525,
-          "ask": 0.1597,
-          "prev_close": 0.1375,
-          "volume_oi": 18039,
+          "last": 0.165,
+          "bid": 0.165,
+          "ask": 0.1659,
+          "prev_close": 0.1348,
+          "volume_oi": 18535,
           "symbol": "CON_OP_10012379",
-          "quote_time": "2026-09-24 11:29:35"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.9": {
-          "last": 0.1961,
-          "bid": 0.1916,
-          "ask": 0.1994,
-          "prev_close": 0.176,
-          "volume_oi": 13904,
+          "last": 0.207,
+          "bid": 0.2019,
+          "ask": 0.207,
+          "prev_close": 0.173,
+          "volume_oi": 14389,
           "symbol": "CON_OP_10012380",
-          "quote_time": "2026-09-24 11:29:54"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.95": {
-          "last": 0.241,
-          "bid": 0.2285,
-          "ask": 0.2488,
-          "prev_close": 0.2173,
-          "volume_oi": 4684,
+          "last": 0.2488,
+          "bid": 0.2488,
+          "ask": 0.25,
+          "prev_close": 0.2136,
+          "volume_oi": 4821,
           "symbol": "CON_OP_10012403",
-          "quote_time": "2026-09-24 11:28:16"
+          "quote_time": "2026-09-24 14:56:27"
         },
         "2.0": {
-          "last": 0.2867,
-          "bid": 0.2815,
-          "ask": 0.2838,
-          "prev_close": 0.26,
-          "volume_oi": 10291,
+          "last": 0.2938,
+          "bid": 0.2938,
+          "ask": 0.2949,
+          "prev_close": 0.259,
+          "volume_oi": 10429,
           "symbol": "CON_OP_10012404",
-          "quote_time": "2026-09-24 11:28:10"
+          "quote_time": "2026-09-24 00:00:00"
         }
       }
     },
@@ -413,474 +413,474 @@
     "2026-12-23": {
       "calls": {
         "1.3": {
-          "last": 0.4151,
-          "bid": 0.4151,
-          "ask": 0.4398,
-          "prev_close": 0.443,
-          "volume_oi": 7028,
+          "last": 0.408,
+          "bid": 0.4084,
+          "ask": 0.4088,
+          "prev_close": 0.4453,
+          "volume_oi": 7093,
           "symbol": "CON_OP_10011515",
-          "quote_time": "2026-09-24 11:26:09"
+          "quote_time": "2026-09-24 14:49:13"
         },
         "1.35": {
-          "last": 0.37,
+          "last": 0.364,
           "bid": 0.3601,
-          "ask": 0.3862,
-          "prev_close": 0.404,
-          "volume_oi": 1622,
+          "ask": 0.3676,
+          "prev_close": 0.3979,
+          "volume_oi": 1638,
           "symbol": "CON_OP_10011479",
-          "quote_time": "2026-09-24 11:27:32"
+          "quote_time": "2026-09-24 14:54:54"
         },
         "1.4": {
-          "last": 0.329,
-          "bid": 0.325,
-          "ask": 0.3402,
-          "prev_close": 0.355,
-          "volume_oi": 5418,
+          "last": 0.3201,
+          "bid": 0.3198,
+          "ask": 0.326,
+          "prev_close": 0.3548,
+          "volume_oi": 5423,
           "symbol": "CON_OP_10011480",
-          "quote_time": "2026-09-24 11:26:08"
+          "quote_time": "2026-09-24 14:56:22"
         },
         "1.45": {
-          "last": 0.2983,
-          "bid": 0.2501,
-          "ask": 0.4099,
-          "prev_close": 0.3113,
-          "volume_oi": 1525,
+          "last": 0.283,
+          "bid": 0.2788,
+          "ask": 0.2856,
+          "prev_close": 0.3235,
+          "volume_oi": 1539,
           "symbol": "CON_OP_10011481",
-          "quote_time": "2026-09-24 10:20:00"
+          "quote_time": "2026-09-24 14:49:08"
         },
         "1.5": {
-          "last": 0.2548,
-          "bid": 0.2514,
-          "ask": 0.2578,
-          "prev_close": 0.2748,
-          "volume_oi": 5615,
+          "last": 0.2464,
+          "bid": 0.2452,
+          "ask": 0.2482,
+          "prev_close": 0.2811,
+          "volume_oi": 5687,
           "symbol": "CON_OP_10011482",
-          "quote_time": "2026-09-24 11:29:26"
+          "quote_time": "2026-09-24 14:49:09"
         },
         "1.55": {
-          "last": 0.2188,
-          "bid": 0.2169,
-          "ask": 0.3098,
-          "prev_close": 0.2393,
-          "volume_oi": 3461,
+          "last": 0.2116,
+          "bid": 0.2065,
+          "ask": 0.2144,
+          "prev_close": 0.243,
+          "volume_oi": 3542,
           "symbol": "CON_OP_10011483",
-          "quote_time": "2026-09-24 11:24:14"
+          "quote_time": "2026-09-24 14:50:02"
         },
         "1.6": {
-          "last": 0.1874,
-          "bid": 0.18,
-          "ask": 0.1953,
-          "prev_close": 0.2056,
-          "volume_oi": 6446,
+          "last": 0.1822,
+          "bid": 0.1769,
+          "ask": 0.1807,
+          "prev_close": 0.2087,
+          "volume_oi": 6461,
           "symbol": "CON_OP_10011484",
-          "quote_time": "2026-09-24 11:28:32"
+          "quote_time": "2026-09-24 14:50:43"
         },
         "1.65": {
-          "last": 0.1613,
-          "bid": 0.1585,
-          "ask": 0.1997,
-          "prev_close": 0.1776,
-          "volume_oi": 7574,
+          "last": 0.1529,
+          "bid": 0.1525,
+          "ask": 0.1529,
+          "prev_close": 0.1785,
+          "volume_oi": 7709,
           "symbol": "CON_OP_10011485",
-          "quote_time": "2026-09-24 11:29:27"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.7": {
-          "last": 0.1394,
-          "bid": 0.1363,
-          "ask": 0.1415,
-          "prev_close": 0.1506,
-          "volume_oi": 17884,
+          "last": 0.129,
+          "bid": 0.128,
+          "ask": 0.1303,
+          "prev_close": 0.152,
+          "volume_oi": 18101,
           "symbol": "CON_OP_10011486",
-          "quote_time": "2026-09-24 11:29:59"
+          "quote_time": "2026-09-24 14:56:51"
         },
         "1.75": {
-          "last": 0.117,
-          "bid": 0.1152,
-          "ask": 0.118,
-          "prev_close": 0.1279,
-          "volume_oi": 16828,
+          "last": 0.1068,
+          "bid": 0.1068,
+          "ask": 0.1108,
+          "prev_close": 0.1286,
+          "volume_oi": 17269,
           "symbol": "CON_OP_10011487",
-          "quote_time": "2026-09-24 11:29:54"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.8": {
-          "last": 0.0987,
-          "bid": 0.0956,
-          "ask": 0.1012,
-          "prev_close": 0.1063,
-          "volume_oi": 17887,
+          "last": 0.0903,
+          "bid": 0.0901,
+          "ask": 0.0902,
+          "prev_close": 0.1089,
+          "volume_oi": 18178,
           "symbol": "CON_OP_10011523",
-          "quote_time": "2026-09-24 11:29:54"
+          "quote_time": "2026-09-24 14:56:52"
         },
         "1.85": {
-          "last": 0.08,
-          "bid": 0.08,
-          "ask": 0.082,
-          "prev_close": 0.0911,
-          "volume_oi": 17843,
+          "last": 0.076,
+          "bid": 0.0733,
+          "ask": 0.076,
+          "prev_close": 0.0909,
+          "volume_oi": 17849,
           "symbol": "CON_OP_10011535",
-          "quote_time": "2026-09-24 11:29:58"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "1.9": {
-          "last": 0.0668,
-          "bid": 0.0663,
-          "ask": 0.0688,
-          "prev_close": 0.0758,
-          "volume_oi": 16956,
+          "last": 0.062,
+          "bid": 0.062,
+          "ask": 0.0626,
+          "prev_close": 0.0764,
+          "volume_oi": 16649,
           "symbol": "CON_OP_10011565",
-          "quote_time": "2026-09-24 11:29:49"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "1.95": {
-          "last": 0.0556,
-          "bid": 0.0556,
-          "ask": 0.0584,
-          "prev_close": 0.0638,
-          "volume_oi": 14566,
+          "last": 0.0519,
+          "bid": 0.052,
+          "ask": 0.0532,
+          "prev_close": 0.0635,
+          "volume_oi": 16166,
           "symbol": "CON_OP_10011566",
-          "quote_time": "2026-09-24 11:28:48"
+          "quote_time": "2026-09-24 14:56:56"
         },
         "2.0": {
-          "last": 0.0477,
-          "bid": 0.0469,
-          "ask": 0.0499,
-          "prev_close": 0.0539,
-          "volume_oi": 18260,
+          "last": 0.0436,
+          "bid": 0.0435,
+          "ask": 0.0436,
+          "prev_close": 0.054,
+          "volume_oi": 17386,
           "symbol": "CON_OP_10011607",
-          "quote_time": "2026-09-24 11:29:42"
+          "quote_time": "2026-09-24 00:00:00"
         },
         "2.05": {
-          "last": 0.0395,
-          "bid": 0.039,
-          "ask": 0.0412,
-          "prev_close": 0.0455,
-          "volume_oi": 11487,
+          "last": 0.0366,
+          "bid": 0.0355,
+          "ask": 0.0379,
+          "prev_close": 0.0459,
+          "volume_oi": 12025,
           "symbol": "CON_OP_10011623",
-          "quote_time": "2026-09-24 11:29:13"
+          "quote_time": "2026-09-24 14:56:12"
         },
         "2.1": {
-          "last": 0.033,
-          "bid": 0.032,
-          "ask": 0.034,
-          "prev_close": 0.0383,
-          "volume_oi": 15776,
+          "last": 0.0306,
+          "bid": 0.03,
+          "ask": 0.0306,
+          "prev_close": 0.039,
+          "volume_oi": 16370,
           "symbol": "CON_OP_10011645",
-          "quote_time": "2026-09-24 11:28:53"
+          "quote_time": "2026-09-24 14:56:22"
         },
         "2.15": {
-          "last": 0.0278,
-          "bid": 0.0275,
-          "ask": 0.0291,
-          "prev_close": 0.0326,
-          "volume_oi": 16764,
+          "last": 0.0256,
+          "bid": 0.0249,
+          "ask": 0.0264,
+          "prev_close": 0.0332,
+          "volume_oi": 17104,
           "symbol": "CON_OP_10011646",
-          "quote_time": "2026-09-24 11:28:59"
+          "quote_time": "2026-09-24 14:56:40"
         },
         "2.2": {
-          "last": 0.0237,
-          "bid": 0.0235,
-          "ask": 0.0251,
-          "prev_close": 0.0279,
-          "volume_oi": 19771,
+          "last": 0.0218,
+          "bid": 0.0217,
+          "ask": 0.0227,
+          "prev_close": 0.0289,
+          "volume_oi": 19930,
           "symbol": "CON_OP_10011663",
-          "quote_time": "2026-09-24 11:28:57"
+          "quote_time": "2026-09-24 14:56:36"
         },
         "2.25": {
-          "last": 0.0203,
-          "bid": 0.0198,
-          "ask": 0.021,
-          "prev_close": 0.0238,
-          "volume_oi": 9308,
+          "last": 0.0182,
+          "bid": 0.0178,
+          "ask": 0.019,
+          "prev_close": 0.0251,
+          "volume_oi": 9835,
           "symbol": "CON_OP_10011829",
-          "quote_time": "2026-09-24 11:29:43"
+          "quote_time": "2026-09-24 14:54:40"
         },
         "2.3": {
-          "last": 0.0173,
-          "bid": 0.0171,
-          "ask": 0.0185,
-          "prev_close": 0.0207,
-          "volume_oi": 13291,
+          "last": 0.016,
+          "bid": 0.0151,
+          "ask": 0.0166,
+          "prev_close": 0.022,
+          "volume_oi": 13926,
           "symbol": "CON_OP_10011843",
-          "quote_time": "2026-09-24 11:28:55"
+          "quote_time": "2026-09-24 14:56:10"
         },
         "2.35": {
-          "last": 0.0151,
+          "last": 0.0139,
           "bid": 0.0133,
-          "ask": 0.021,
-          "prev_close": 0.0179,
-          "volume_oi": 9261,
+          "ask": 0.014,
+          "prev_close": 0.0191,
+          "volume_oi": 10143,
           "symbol": "CON_OP_10011955",
-          "quote_time": "2026-09-24 11:29:40"
+          "quote_time": "2026-09-24 14:55:16"
         },
         "2.4": {
-          "last": 0.0128,
-          "bid": 0.0126,
-          "ask": 0.0134,
-          "prev_close": 0.0138,
-          "volume_oi": 17746,
+          "last": 0.0118,
+          "bid": 0.0118,
+          "ask": 0.0124,
+          "prev_close": 0.0164,
+          "volume_oi": 19322,
           "symbol": "CON_OP_10011956",
-          "quote_time": "2026-09-24 11:29:41"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "2.45": {
-          "last": 0.0114,
-          "bid": 0.0111,
-          "ask": 0.0125,
-          "prev_close": 0.0134,
-          "volume_oi": 16685,
+          "last": 0.0102,
+          "bid": 0.01,
+          "ask": 0.011,
+          "prev_close": 0.0152,
+          "volume_oi": 18502,
           "symbol": "CON_OP_10011977",
-          "quote_time": "2026-09-24 11:29:25"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "2.5": {
-          "last": 0.0104,
-          "bid": 0.0103,
-          "ask": 0.011,
-          "prev_close": 0.0126,
-          "volume_oi": 56389,
+          "last": 0.0096,
+          "bid": 0.0096,
+          "ask": 0.0099,
+          "prev_close": 0.0133,
+          "volume_oi": 63577,
           "symbol": "CON_OP_10012015",
-          "quote_time": "2026-09-24 11:29:19"
+          "quote_time": "2026-09-24 15:00:00"
         },
         "2.55": {
-          "last": 0.0093,
-          "bid": 0.0091,
-          "ask": 0.0093,
-          "prev_close": 0.0109,
-          "volume_oi": 112032,
+          "last": 0.0086,
+          "bid": 0.0083,
+          "ask": 0.0086,
+          "prev_close": 0.0126,
+          "volume_oi": 116392,
           "symbol": "CON_OP_10012016",
-          "quote_time": "2026-09-24 11:29:47"
+          "quote_time": "2026-09-24 15:00:00"
         }
       },
       "puts": {
         "1.3": {
-          "last": 0.0145,
-          "bid": 0.014,
-          "ask": 0.0147,
-          "prev_close": 0.0137,
-          "volume_oi": 92321,
+          "last": 0.0158,
+          "bid": 0.0153,
+          "ask": 0.0158,
+          "prev_close": 0.0143,
+          "volume_oi": 95626,
           "symbol": "CON_OP_10011516",
-          "quote_time": "2026-09-24 11:29:57"
-        },
-        "1.35": {
-          "last": 0.0202,
-          "bid": 0.0191,
-          "ask": 0.0215,
-          "prev_close": 0.0197,
-          "volume_oi": 58929,
-          "symbol": "CON_OP_10011488",
-          "quote_time": "2026-09-24 11:29:59"
-        },
-        "1.4": {
-          "last": 0.0285,
-          "bid": 0.0261,
-          "ask": 0.0288,
-          "prev_close": 0.0264,
-          "volume_oi": 25967,
-          "symbol": "CON_OP_10011489",
-          "quote_time": "2026-09-24 11:29:36"
-        },
-        "1.45": {
-          "last": 0.0382,
-          "bid": 0.0321,
-          "ask": 0.0392,
-          "prev_close": 0.0352,
-          "volume_oi": 11829,
-          "symbol": "CON_OP_10011490",
-          "quote_time": "2026-09-24 11:29:05"
-        },
-        "1.5": {
-          "last": 0.0509,
-          "bid": 0.0483,
-          "ask": 0.052,
-          "prev_close": 0.0473,
-          "volume_oi": 21632,
-          "symbol": "CON_OP_10011491",
-          "quote_time": "2026-09-24 11:29:39"
-        },
-        "1.55": {
-          "last": 0.0665,
-          "bid": 0.065,
-          "ask": 0.0662,
-          "prev_close": 0.0605,
-          "volume_oi": 14954,
-          "symbol": "CON_OP_10011492",
-          "quote_time": "2026-09-24 11:29:31"
-        },
-        "1.6": {
-          "last": 0.0843,
-          "bid": 0.0821,
-          "ask": 0.0856,
-          "prev_close": 0.0776,
-          "volume_oi": 19306,
-          "symbol": "CON_OP_10011493",
-          "quote_time": "2026-09-24 11:29:57"
-        },
-        "1.65": {
-          "last": 0.1061,
-          "bid": 0.1043,
-          "ask": 0.11,
-          "prev_close": 0.0976,
-          "volume_oi": 14839,
-          "symbol": "CON_OP_10011494",
-          "quote_time": "2026-09-24 11:29:52"
-        },
-        "1.7": {
-          "last": 0.1281,
-          "bid": 0.1257,
-          "ask": 0.1388,
-          "prev_close": 0.1209,
-          "volume_oi": 20058,
-          "symbol": "CON_OP_10011495",
-          "quote_time": "2026-09-24 11:29:59"
-        },
-        "1.75": {
-          "last": 0.1609,
-          "bid": 0.1506,
-          "ask": 0.1651,
-          "prev_close": 0.1495,
-          "volume_oi": 13814,
-          "symbol": "CON_OP_10011496",
-          "quote_time": "2026-09-24 11:29:47"
-        },
-        "1.8": {
-          "last": 0.1939,
-          "bid": 0.18,
-          "ask": 0.1938,
-          "prev_close": 0.1771,
-          "volume_oi": 8412,
-          "symbol": "CON_OP_10011524",
-          "quote_time": "2026-09-24 11:28:16"
-        },
-        "1.85": {
-          "last": 0.2279,
-          "bid": 0.1801,
-          "ask": 0.315,
-          "prev_close": 0.2088,
-          "volume_oi": 5243,
-          "symbol": "CON_OP_10011536",
-          "quote_time": "2026-09-24 11:28:16"
-        },
-        "1.9": {
-          "last": 0.2629,
-          "bid": 0.1569,
-          "ask": 0.2658,
-          "prev_close": 0.2475,
-          "volume_oi": 3080,
-          "symbol": "CON_OP_10011567",
-          "quote_time": "2026-09-24 11:23:52"
-        },
-        "1.95": {
-          "last": 0.3007,
-          "bid": 0.18,
-          "ask": 0.4198,
-          "prev_close": 0.2817,
-          "volume_oi": 2196,
-          "symbol": "CON_OP_10011568",
-          "quote_time": "2026-09-24 11:22:04"
-        },
-        "2.0": {
-          "last": 0.3435,
-          "bid": 0.3212,
-          "ask": 0.3528,
-          "prev_close": 0.3242,
-          "volume_oi": 2344,
-          "symbol": "CON_OP_10011608",
-          "quote_time": "2026-09-24 11:25:55"
-        },
-        "2.05": {
-          "last": 0.0,
-          "bid": 0.3,
-          "ask": 0.5355,
-          "prev_close": 0.3665,
-          "volume_oi": 1149,
-          "symbol": "CON_OP_10011624",
           "quote_time": "2026-09-24 00:00:00"
         },
+        "1.35": {
+          "last": 0.0222,
+          "bid": 0.0213,
+          "ask": 0.0222,
+          "prev_close": 0.019,
+          "volume_oi": 59594,
+          "symbol": "CON_OP_10011488",
+          "quote_time": "2026-09-24 14:56:34"
+        },
+        "1.4": {
+          "last": 0.0303,
+          "bid": 0.0289,
+          "ask": 0.03,
+          "prev_close": 0.0249,
+          "volume_oi": 26358,
+          "symbol": "CON_OP_10011489",
+          "quote_time": "2026-09-24 14:56:56"
+        },
+        "1.45": {
+          "last": 0.0405,
+          "bid": 0.0386,
+          "ask": 0.04,
+          "prev_close": 0.0331,
+          "volume_oi": 12256,
+          "symbol": "CON_OP_10011490",
+          "quote_time": "2026-09-24 14:56:55"
+        },
+        "1.5": {
+          "last": 0.054,
+          "bid": 0.0517,
+          "ask": 0.054,
+          "prev_close": 0.0446,
+          "volume_oi": 21286,
+          "symbol": "CON_OP_10011491",
+          "quote_time": "2026-09-24 15:00:00"
+        },
+        "1.55": {
+          "last": 0.0677,
+          "bid": 0.0675,
+          "ask": 0.069,
+          "prev_close": 0.0564,
+          "volume_oi": 15330,
+          "symbol": "CON_OP_10011492",
+          "quote_time": "2026-09-24 00:00:00"
+        },
+        "1.6": {
+          "last": 0.0885,
+          "bid": 0.087,
+          "ask": 0.0899,
+          "prev_close": 0.0728,
+          "volume_oi": 19683,
+          "symbol": "CON_OP_10011493",
+          "quote_time": "2026-09-24 14:56:29"
+        },
+        "1.65": {
+          "last": 0.1102,
+          "bid": 0.1085,
+          "ask": 0.1102,
+          "prev_close": 0.0925,
+          "volume_oi": 14882,
+          "symbol": "CON_OP_10011494",
+          "quote_time": "2026-09-24 14:56:28"
+        },
+        "1.7": {
+          "last": 0.137,
+          "bid": 0.136,
+          "ask": 0.1375,
+          "prev_close": 0.115,
+          "volume_oi": 20164,
+          "symbol": "CON_OP_10011495",
+          "quote_time": "2026-09-24 14:56:34"
+        },
+        "1.75": {
+          "last": 0.1657,
+          "bid": 0.1628,
+          "ask": 0.1668,
+          "prev_close": 0.1403,
+          "volume_oi": 13703,
+          "symbol": "CON_OP_10011496",
+          "quote_time": "2026-09-24 14:56:28"
+        },
+        "1.8": {
+          "last": 0.1965,
+          "bid": 0.1941,
+          "ask": 0.2,
+          "prev_close": 0.1696,
+          "volume_oi": 8450,
+          "symbol": "CON_OP_10011524",
+          "quote_time": "2026-09-24 14:56:28"
+        },
+        "1.85": {
+          "last": 0.2306,
+          "bid": 0.2287,
+          "ask": 0.2362,
+          "prev_close": 0.2037,
+          "volume_oi": 5232,
+          "symbol": "CON_OP_10011536",
+          "quote_time": "2026-09-24 14:55:40"
+        },
+        "1.9": {
+          "last": 0.2676,
+          "bid": 0.2651,
+          "ask": 0.2688,
+          "prev_close": 0.2431,
+          "volume_oi": 3121,
+          "symbol": "CON_OP_10011567",
+          "quote_time": "2026-09-24 14:54:21"
+        },
+        "1.95": {
+          "last": 0.304,
+          "bid": 0.3038,
+          "ask": 0.3126,
+          "prev_close": 0.2764,
+          "volume_oi": 2233,
+          "symbol": "CON_OP_10011568",
+          "quote_time": "2026-09-24 14:28:25"
+        },
+        "2.0": {
+          "last": 0.3471,
+          "bid": 0.3473,
+          "ask": 0.35,
+          "prev_close": 0.3214,
+          "volume_oi": 2348,
+          "symbol": "CON_OP_10011608",
+          "quote_time": "2026-09-24 14:54:39"
+        },
+        "2.05": {
+          "last": 0.3901,
+          "bid": 0.3872,
+          "ask": 0.3971,
+          "prev_close": 0.3584,
+          "volume_oi": 1149,
+          "symbol": "CON_OP_10011624",
+          "quote_time": "2026-09-24 14:53:37"
+        },
         "2.1": {
-          "last": 0.0,
-          "bid": 0.4085,
-          "ask": 0.5961,
-          "prev_close": 0.4085,
+          "last": 0.4085,
+          "bid": 0.4305,
+          "ask": 0.441,
+          "prev_close": 0.3872,
           "volume_oi": 2018,
           "symbol": "CON_OP_10011647",
           "quote_time": "2026-09-24 00:00:00"
         },
         "2.15": {
-          "last": 0.0,
-          "bid": 0.4538,
-          "ask": 0.6458,
-          "prev_close": 0.4538,
+          "last": 0.4745,
+          "bid": 0.4749,
+          "ask": 0.4858,
+          "prev_close": 0.4292,
           "volume_oi": 2994,
           "symbol": "CON_OP_10011648",
-          "quote_time": "2026-09-24 00:00:00"
+          "quote_time": "2026-09-24 14:07:08"
         },
         "2.2": {
-          "last": 0.5134,
-          "bid": 0.3403,
-          "ask": 0.6912,
-          "prev_close": 0.4937,
-          "volume_oi": 5093,
+          "last": 0.519,
+          "bid": 0.5212,
+          "ask": 0.5326,
+          "prev_close": 0.4726,
+          "volume_oi": 5085,
           "symbol": "CON_OP_10011664",
-          "quote_time": "2026-09-24 11:22:00"
+          "quote_time": "2026-09-24 14:47:31"
         },
         "2.25": {
           "last": 0.558,
-          "bid": 0.3865,
-          "ask": 0.7374,
-          "prev_close": 0.5455,
+          "bid": 0.5672,
+          "ask": 0.5789,
+          "prev_close": 0.5183,
           "volume_oi": 1545,
           "symbol": "CON_OP_10011830",
           "quote_time": "2026-09-24 09:40:10"
         },
         "2.3": {
-          "last": 0.0,
-          "bid": 0.2991,
-          "ask": 0.7847,
-          "prev_close": 0.5929,
+          "last": 0.5929,
+          "bid": 0.6141,
+          "ask": 0.6262,
+          "prev_close": 0.5758,
           "volume_oi": 1380,
           "symbol": "CON_OP_10011844",
           "quote_time": "2026-09-24 00:00:00"
         },
         "2.35": {
-          "last": 0.0,
-          "bid": 0.4807,
-          "ask": 0.8316,
-          "prev_close": 0.6394,
+          "last": 0.6394,
+          "bid": 0.6615,
+          "ask": 0.6739,
+          "prev_close": 0.654,
           "volume_oi": 788,
           "symbol": "CON_OP_10011957",
           "quote_time": "2026-09-24 00:00:00"
         },
         "2.4": {
-          "last": 0.0,
-          "bid": 0.5285,
-          "ask": 0.8794,
-          "prev_close": 0.6864,
+          "last": 0.6864,
+          "bid": 0.709,
+          "ask": 0.7218,
+          "prev_close": 0.68,
           "volume_oi": 600,
           "symbol": "CON_OP_10011958",
           "quote_time": "2026-09-24 00:00:00"
         },
         "2.45": {
-          "last": 0.0,
-          "bid": 0.7524,
-          "ask": 0.9274,
-          "prev_close": 0.7288,
-          "volume_oi": 1050,
+          "last": 0.7524,
+          "bid": 0.7574,
+          "ask": 0.7706,
+          "prev_close": 0.7084,
+          "volume_oi": 1051,
           "symbol": "CON_OP_10011978",
-          "quote_time": "2026-09-24 00:00:00"
+          "quote_time": "2026-09-24 13:00:03"
         },
         "2.5": {
-          "last": 0.0,
-          "bid": 0.6334,
-          "ask": 0.9758,
-          "prev_close": 0.7683,
+          "last": 0.7683,
+          "bid": 0.8069,
+          "ask": 0.8203,
+          "prev_close": 0.765,
           "volume_oi": 2154,
           "symbol": "CON_OP_10012017",
           "quote_time": "2026-09-24 00:00:00"
         },
         "2.55": {
-          "last": 0.85,
-          "bid": 0.8001,
-          "ask": 0.8755,
-          "prev_close": 0.8255,
-          "volume_oi": 8761,
+          "last": 0.8495,
+          "bid": 0.856,
+          "ask": 0.8697,
+          "prev_close": 0.8198,
+          "volume_oi": 8764,
           "symbol": "CON_OP_10012018",
-          "quote_time": "2026-09-24 11:22:05"
+          "quote_time": "2026-09-24 13:32:25"
         }
       }
     }
