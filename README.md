@@ -10,6 +10,7 @@
 - 浮动盈亏、接货成本、安全距离
 - 盈利里程碑提示（1/3、1/2最大收益）
 - 智能操作建议（基于7条原则）
+- **接货额度提示**：按到期日汇总"若接货需准备的现金"（K1×组数×10000），额度上限人工判断
 
 **报告路径**：`reports/latest.html`
 
@@ -31,6 +32,8 @@
 #### 卖Covered Call
 - 需要持有ETF现货
 - 年化收益 ≥ 15%
+
+年化门槛与接货成本红线均从 `positions.json` 的 `targets` 读取（单位：年化%，见下方配置说明），scanner 不再硬编码。
 
 **报告路径**：`reports/opportunities.html`
 
@@ -71,6 +74,8 @@
   ],
   "targets": {
     "max_cost": 1.65,
+    "min_annual_spread": 100,
+    "min_annual_cc": 15,
     "has_etf": false
   }
 }
@@ -78,6 +83,8 @@
 
 **关键字段**：
 - `targets.max_cost`：目标接货成本（当前1.65）
+- `targets.min_annual_spread`：价差/卖put年化门槛（%，当前100）
+- `targets.min_annual_cc`：covered call年化门槛（%，当前15）
 - `targets.has_etf`：是否持有ETF现货
 
 ### option_chain_latest.json
@@ -185,6 +192,12 @@ option-tracker/
 ```
 
 ## 更新日志
+
+### 2026-09-27
+
+- 🐛 修复年化门槛失效bug：`positions.json` 里 `min_annual_return: 0.05` 是死配置（scanner从未读取），且 scanner 硬编码100/100/15与main()传入的30不一致，导致报告标题错误显示"≥30%"。现统一从 `targets.min_annual_spread`(100) / `targets.min_annual_cc`(15) 读取，删除死配置
+- ✅ 持仓报告新增"接货额度提示"：按到期日汇总行权接货所需现金（K1×组数×10000），HTML与终端摘要均有，额度上限人工判断
+- 📝 README同步：targets新字段、接货额度功能说明
 
 ### 2026-09-24（清理）
 

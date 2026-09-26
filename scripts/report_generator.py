@@ -158,6 +158,36 @@ def generate_html_report(positions_data):
             total_current += analysis['current_value']
             total_pnl += analysis['pnl']
     
+    # 按到期日汇总接货额度 (行权买入正股所需现金, 不含已付权利金)
+    # 价差: S到期落在[K1,K2)时行权K1腿接货, 需 K1×lots×multiplier
+    delivery_by_expiry = {}
+    for a in analyses:
+        pos = a['position']
+        if pos['type'] == 'bull_call_spread':
+            cash_needed = pos['long_strike'] * pos['lots'] * pos['contract_multiplier']
+            entry = delivery_by_expiry.setdefault(pos['expiry'], {'cash': 0, 'positions': []})
+            entry['cash'] += cash_needed
+            entry['positions'].append(f"{pos['long_strike']}/{pos['short_strike']}×{pos['lots']}组")
+    
+    delivery_rows = ""
+    delivery_total = 0
+    for expiry in sorted(delivery_by_expiry):
+        e = delivery_by_expiry[expiry]
+        delivery_total += e['cash']
+        delivery_rows += f"""
+            <tr>
+                <td>{expiry}</td>
+                <td>{', '.join(e['positions'])}</td>
+                <td class="highlight">¥{e['cash']:,.0f}</td>
+            </tr>"""
+    if delivery_rows:
+        delivery_rows += f"""
+            <tr>
+                <td><b>合计</b></td>
+                <td></td>
+                <td class="highlight"><b>¥{delivery_total:,.0f}</b></td>
+            </tr>"""
+    
     # 生成HTML
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -354,6 +384,45 @@ def generate_html_report(positions_data):
             color: #666;
             font-size: 12px;
         }}
+
+        .delivery-section {{
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 18px;
+            margin-bottom: 20px;
+        }}
+        .delivery-section h3 {{
+            font-size: 15px;
+            color: #e0e0e0;
+            margin-bottom: 12px;
+        }}
+        .delivery-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }}
+        .delivery-table th {{
+            text-align: left;
+            color: #aaa;
+            font-weight: normal;
+            padding: 6px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }}
+        .delivery-table td {{
+            padding: 8px 10px;
+            color: #e0e0e0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }}
+        .delivery-table .highlight {{
+            color: #fbbf24;
+            font-weight: bold;
+        }}
+        .delivery-note {{
+            margin-top: 10px;
+            font-size: 12px;
+            color: #888;
+        }}
     </style>
 </head>
 <body>
@@ -380,6 +449,18 @@ def generate_html_report(positions_data):
                     {'+' if total_pnl >= 0 else ''}¥{total_pnl:,.0f}
                 </div>
             </div>
+        </div>
+
+        <div class="delivery-section">
+            <h3>💰 接货额度提示（按到期日，行权买入正股所需现金）</h3>
+            <table class="delivery-table">
+                <thead>
+                    <tr><th>到期日</th><th>持仓</th><th>需备现金</th></tr>
+                </thead>
+                <tbody>{delivery_rows}
+                </tbody>
+            </table>
+            <div class="delivery-note">额度上限由人工判断，此处仅提示各到期日若被指派/主动行权接货所需准备的现金</div>
         </div>
 """
     
@@ -553,6 +634,24 @@ def run_analysis():
             total_pnl += analysis['pnl']
     
     print(f"总浮盈: {'+' if total_pnl >= 0 else ''}¥{total_pnl:,.0f}")
+    
+    # 接货额度提示 (按到期日)
+    delivery_by_expiry = {}
+    for pos in positions_data['positions']:
+        if pos['status'] == 'open' and pos['type'] == 'bull_call_spread':
+            cash = pos['long_strike'] * pos['lots'] * pos['contract_multiplier']
+            entry = delivery_by_expiry.setdefault(pos['expiry'], {'cash': 0, 'positions': []})
+            entry['cash'] += cash
+            entry['positions'].append(f"{pos['long_strike']}/{pos['short_strike']}×{pos['lots']}组")
+    if delivery_by_expiry:
+        print()
+        print("💰 接货额度提示 (行权买入正股所需现金, 上限人工判断):")
+        total_cash = 0
+        for expiry in sorted(delivery_by_expiry):
+            e = delivery_by_expiry[expiry]
+            total_cash += e['cash']
+            print(f"  {expiry}: ¥{e['cash']:,.0f}  ({', '.join(e['positions'])})")
+        print(f"  合计: ¥{total_cash:,.0f}")
     
     return str(report_path)
 

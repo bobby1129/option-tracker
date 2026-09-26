@@ -60,7 +60,7 @@ def scan_bull_call_spreads(chain, target_cost, min_annual):
                     continue
                 
                 annual = (max_profit / long_price) * (365 / days) * 100
-                if annual < 100:
+                if annual < min_annual:
                     continue
                 
                 opportunities.append({
@@ -116,7 +116,7 @@ def scan_sell_puts(chain, target_cost, min_annual):
             income = put_price * 10000
             annual = (income / capital) * (365 / days) * 100
             
-            if annual < 100:
+            if annual < min_annual:
                 continue
             
             opportunities.append({
@@ -161,7 +161,7 @@ def scan_covered_calls(chain, min_annual, has_etf, etf_cost):
             income = call_price * 10000
             annual = (income / capital) * (365 / days) * 100
             
-            if annual < 15:
+            if annual < min_annual:
                 continue
             
             opportunities.append({
@@ -549,10 +549,10 @@ def generate_report(spreads, puts, ccs, chain, config):
 def main():
     chain, config_data = load_data()
     
-    # 扫描配置
+    # 扫描配置 (门槛从positions.json targets读取, 单位: 年化%)
     target_cost = config_data['targets']['max_cost']
-    min_annual_spread = 30
-    min_annual_cc = 15
+    min_annual_spread = config_data['targets'].get('min_annual_spread', 100)
+    min_annual_cc = config_data['targets'].get('min_annual_cc', 15)
     has_etf = config_data['targets'].get('has_etf', False)
     etf_cost = config_data['targets'].get('etf_cost', None)
     
