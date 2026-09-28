@@ -30,8 +30,12 @@ import requests
 
 HEADERS = {"Referer": "https://stock.finance.sina.com.cn/option/quotes.html"}
 HQ = "https://hq.sinajs.cn/list="
-ETF_SYMBOL = "sh588000"
-ETF_CODE = "588000"
+# 多标的: (ETF代码, 行情symbol, 输出文件名后缀)
+# 588000 保持 option_chain_latest.json 原名(scanner等下游依赖); 其他标的带代码后缀
+UNDERLYINGS = [
+    ("588000", "sh588000", ""),
+    ("510050", "sh510050", "_510050"),
+]
 N_MONTHS = 3  # 只看最近3个合约期 (用户规则)
 
 
@@ -63,9 +67,9 @@ def month_has_contracts(short):
     return bool(lst.get(f"OP_UP_{short}"))
 
 
-def get_expiry_months():
+def get_expiry_months(etf_code):
     """枚举未来月份, 探测最近 N_MONTHS 个有效合约月
-    返回 [(ym, expiry, short), ...]  short = 合约代码前缀(588000+YYMM)
+    返回 [(ym, expiry, short), ...]  short = 合约代码前缀(ETF代码+YYMM)
 
     ⚠️ 弃用 getRemainderDay 接口探测月份: 实测对某些月flaky返回None(2026-11返回None但实际有9个合约),
        且不排除已过期月(2026-09-23已过期仍返回)。改用 OP_UP 合约列表探测(权威) + 本地算第四个周三到期日。
@@ -80,7 +84,7 @@ def get_expiry_months():
         expiry = fourth_wednesday(y, m)
         if expiry < today:  # 排除已过期月份
             continue
-        short = f"{ETF_CODE}{str(y)[2:]}{m:02d}"  # 588000 + 2610
+        short = f"{etf_code}{str(y)[2:]}{m:02d}"  # 588000 + 2610
         if month_has_contracts(short):
             months.append((f"{y}-{m:02d}", expiry.isoformat(), short))
         if len(months) >= N_MONTHS:
@@ -88,16 +92,16 @@ def get_expiry_months():
     return months
 
 
-def fetch_chain(verify=False):
-    etf = sina_hq([ETF_SYMBOL])
-    if ETF_SYMBOL not in etf:
-        raise RuntimeError("ETF行情获取失败")
-    etf_price = float(etf[ETF_SYMBOL][3])
-    f = etf[ETF_SYMBOL]
+def fetch_chain(etf_code, etf_symbol, verify=False):
+    etf = sina_hq([etf_symbol])
+    if etf_symbol not in etf:
+        raise RuntimeError(f"ETF行情获取失败: {etf_symbol}")
+    etf_price = float(etf[etf_symbol][3])
+    f = etf[etf_symbol]
     # 尾部为 ...,2026-09-24,11:30:00,00,(空串) → [-4]=日期 [-3]=时间
     quote_time = f"{f[-4]} {f[-3]}"
 
-    months = get_expiry_months()  # [(ym, expiry, short), ...]
+    months = get_expiry_months(etf_code)  # [(ym, expiry, short), ...]
     contracts = {}
     for ym, expiry, short in months:
         lst = sina_hq([f"OP_UP_{short}", f"OP_DOWN_{short}"])
@@ -157,22 +161,23 @@ def main():
     if not ok:
         print(f"NON_TRADING_DAY: {reason}")
         sys.exit(0)
-    print("抓取新浪期权链 (科创50ETF 588000)...")
-    data = fetch_chain(verify=verify)
-    if not data["contracts"]:
-        print("❌ 合约数据为空, 拒绝写入latest (保护旧数据)")
-        sys.exit(1)
-
     data_dir = Path(__file__).parent.parent / "data"
     data_dir.mkdir(exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    for path in [data_dir / f"option_chain_{ts}.json", data_dir / "option_chain_latest.json"]:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    n = sum(len(c["calls"]) + len(c["puts"]) for c in data["contracts"].values())
-    print(f"✅ ETF={data['etf_price']} 行情时间={data['timestamp']} "
-          f"月份={list(data['contracts'].keys())} 合约数={n}")
-    print(f"已写入 data/option_chain_latest.json")
+    for etf_code, etf_symbol, suffix in UNDERLYINGS:
+        print(f"抓取新浪期权链 ({etf_code})...")
+        data = fetch_chain(etf_code, etf_symbol, verify=verify)
+        if not data["contracts"]:
+            print(f"❌ {etf_code} 合约数据为空, 拒绝写入 (保护旧数据)")
+            continue
+        for path in [data_dir / f"option_chain{suffix}_{ts}.json",
+                     data_dir / f"option_chain{suffix}_latest.json"]:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        n = sum(len(c["calls"]) + len(c["puts"]) for c in data["contracts"].values())
+        print(f"✅ {etf_code} ETF={data['etf_price']} 行情时间={data['timestamp']} "
+              f"月份={list(data['contracts'].keys())} 合约数={n}")
+        print(f"已写入 data/option_chain{suffix}_latest.json")
 
 
 if __name__ == "__main__":

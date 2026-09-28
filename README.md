@@ -87,9 +87,32 @@
 - `targets.min_annual_cc`：covered call年化门槛（%，当前15）
 - `targets.has_etf`：是否持有ETF现货
 
+**卖出Put（short_put）持仓结构**（单腿，无 long 腿）：
+
+```json
+{
+  "id": 3,
+  "underlying": "588000",
+  "type": "short_put",
+  "expiry": "2026-11-25",
+  "strike": 1.55,
+  "lots": 5,
+  "contract_multiplier": 10000,
+  "open_date": "2026-09-28",
+  "status": "open",
+  "legs": {
+    "short": {"strike": 1.55, "option_type": "put", "direction": "sell", "open_price": 0.0532, "current_price": 0.054}
+  }
+}
+```
+
+卖put口径：盈亏 = 权利金收入 - 当前平仓成本；资金占用 = ETF×15%×乘数×手数（与scanner一致）；接货成本 = 盈亏平衡 = 行权价 - 权利金；接货需备现金 = 行权价×手数×乘数。
+
 ### option_chain_latest.json
 
 期权链数据，最近3个合约月的看涨/看跌期权实时价格（last/bid/ask/行权价/持仓量）。
+
+**多标的**：588000（科创50ETF）→ `option_chain_latest.json`（历史原名，scanner依赖）；510050（上证50ETF）→ `option_chain_510050_latest.json`。标的清单在 `fetch_chain_sina.py` 的 `UNDERLYINGS` 配置。
 
 **数据来源**：新浪财经期权T型报价接口（`fetch_chain_sina.py` 纯 requests 抓取，见"更新期权数据"）
 
@@ -191,7 +214,27 @@ option-tracker/
 └── README.md
 ```
 
+## 交易框架备忘（Agent必读）
+
+- 两轴框架"收租+接货"：年化门槛（价差/卖put ≥100%，cc ≥15%）与接货成本红线（1.65）均在 `positions.json` 的 `targets` 配置，scanner 不硬编码。额度上限人工判断，报告按到期日提示接货额度。
+- IV regime 择时：上涨行情→牛市价差（call权利金厚，涨幅只封顶不亏 Vega）；下跌后→卖put（IV高 + 接货成本达标）。同一档 call 比 put 贵常是行权价网格错位，等距校正后 put skew 正常。
+- cron 链路：`fetch_chain_sina.py`（纯 requests 抓新浪期权链，OP_UP 逐月探测合约，去掉 C 后缀）→ `scanner.py`（只读缓存）；非交易日返回 `[SILENT]`。
+- 实盘券商为华泰；数据对标以华泰为准，HV 用 60 日窗口；ETF 期权交易成本约 7 元/手。
+- 持仓数据：`data/positions.json`。
+
 ## 更新日志
+
+### 2026-09-28
+
+- ✅ 报告显示持仓周期：每条持仓根据 `open_date` 计算"已持N天"（HTML角标+终端摘要），便于判断持仓时长和未来复盘
+- ✅ 卡片角标统一：所有组合（价差/卖put）均显示 标的·策略·到期日·剩余天数·手数·已持天数
+- ✅ 新增"理论最大收租收益率"指标：最大收益/占用资金（价差=净支出，卖put=保证金），并按总持仓周期年化（`max_return_pct` / `max_annual_return`），HTML+终端摘要均有
+- ✅ 持仓跟踪支持 `short_put`（卖出Put单腿）类型：新增组合#3（科创50ETF 2026-11-25 卖Put 1.55×5手 @0.0532）、组合#4（50ETF 2026-10-28 卖Put 2.9×5手 @0.0255，9/24开仓）
+- ✅ **多标的支持**：`fetch_chain_sina.py` 增加 UNDERLYINGS 配置（588000科创50ETF + 510050上证50ETF），588000 输出保持 `option_chain_latest.json` 原名（scanner等下游依赖），其他标的输出 `option_chain_{code}_latest.json`
+- ✅ `update_positions.py` 重写：按 position.underlying 匹配链文件，支持 bull_call_spread / short_put 两种类型（此前只支持价差且直接取 long_strike/short_strike 会对卖put崩溃）
+- `report_generator.py` 按 type 分发计算：卖put盈亏 = 权利金收入 - 当前平仓成本；资金占用与scanner口径一致（ETF×15%×乘数×手数）；接货成本=盈亏平衡=行权价-权利金
+- 接货额度提示（HTML+终端摘要）纳入卖put：需备现金 = 行权价×手数×10000；持仓标签带标的名
+- 报告头部改为多标的行情行（按 underlying 分组各取最新价），不再硬编码 positions[0]
 
 ### 2026-09-27
 
