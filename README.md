@@ -216,6 +216,7 @@ option-tracker/
 
 ## 交易框架备忘（Agent必读）
 
+- **提交红线（2026-09-28确立）**：git 只提交代码/文档改动（scripts/、README.md），**实际持仓与行情数据永不提交**（data/positions.json、option_chain_*.json、reports/*.html 留本地）。用户忘了提醒时，Agent 须主动提醒并只 add 代码文件。
 - 两轴框架"收租+接货"：年化门槛（价差/卖put ≥100%，cc ≥15%）与接货成本红线（1.65）均在 `positions.json` 的 `targets` 配置，scanner 不硬编码。额度上限人工判断，报告按到期日提示接货额度。
 - IV regime 择时：上涨行情→牛市价差（call权利金厚，涨幅只封顶不亏 Vega）；下跌后→卖put（IV高 + 接货成本达标）。同一档 call 比 put 贵常是行权价网格错位，等距校正后 put skew 正常。
 - cron 链路：`fetch_chain_sina.py`（纯 requests 抓新浪期权链，OP_UP 逐月探测合约，去掉 C 后缀）→ `scanner.py`（只读缓存）；非交易日返回 `[SILENT]`。
