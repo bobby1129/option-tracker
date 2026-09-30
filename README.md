@@ -202,6 +202,7 @@ python3 scripts/fetch_chain_sina.py && python3 scripts/scanner.py
 option-tracker/
 ├── data/
 │   ├── positions.json              # 持仓配置
+│   ├── trades.json                 # 历史平仓流水(实际交易数据, 不提交git)
 │   └── option_chain_latest.json    # 期权链数据
 ├── reports/
 │   ├── latest.html                 # 持仓报告
@@ -216,7 +217,7 @@ option-tracker/
 
 ## 交易框架备忘（Agent必读）
 
-- **提交红线（2026-09-28确立）**：git 只提交代码/文档改动（scripts/、README.md），**实际持仓与行情数据永不提交**（data/positions.json、option_chain_*.json、reports/*.html 留本地）。用户忘了提醒时，Agent 须主动提醒并只 add 代码文件。
+- **提交红线（2026-09-28确立）**：git 只提交代码/文档改动（scripts/、README.md），**实际持仓与行情数据永不提交**（data/positions.json、data/trades.json、option_chain_*.json、reports/*.html 留本地）。用户忘了提醒时，Agent 须主动提醒并只 add 代码文件。
 - 两轴框架"收租+接货"：年化门槛（价差/卖put ≥100%，cc ≥15%）与接货成本红线（1.65）均在 `positions.json` 的 `targets` 配置，scanner 不硬编码。额度上限人工判断，报告按到期日提示接货额度。
 - IV regime 择时：上涨行情→牛市价差（call权利金厚，涨幅只封顶不亏 Vega）；下跌后→卖put（IV高 + 接货成本达标）。同一档 call 比 put 贵常是行权价网格错位，等距校正后 put skew 正常。
 - cron 链路：`fetch_chain_sina.py`（纯 requests 抓新浪期权链，OP_UP 逐月探测合约，去掉 C 后缀）→ `scanner.py`（只读缓存）；非交易日返回 `[SILENT]`。
@@ -227,6 +228,8 @@ option-tracker/
 
 ### 2026-09-30
 
+- ✅ **历史战绩跟踪**：新增 `data/trades.json` 交易流水账（每笔平仓一条：trade_id/date/position_id/action/strike/open_price/close_price/lots/pnl_gross/cost/pnl_net/note；成本按 `cost_per_lot`=7元/手）。报告新增"📜 历史战绩"区块（HTML卡片+终端摘要）：累计平仓笔数、累计已实现盈亏、胜率、平均单笔、最大单笔盈/亏、按标的分组小计、最近5笔明细。只记已实现盈亏，与浮动盈亏口径分离
+- ✅ 首笔录入：组合#1 价差卖腿 1750C 0.0739→0.0265 ×10手，毛盈+4740，扣成本70，净+4670
 - ✅ 组合#1（科创50ETF 10-28 1.45/1.75价差）卖出腿 1750C 以 0.0265 买入平仓（开仓0.0739，已实现盈利 +¥4,740），组合转为**单腿买Call**状态，等待回补
 - ✅ 持仓结构新增"卖出腿已平"支持：`legs.short.status="closed"` + `close_price` + `close_date`；`plan` 字段记录回补计划（1750C ≥0.04~0.05 再卖出，做T目标再收~2350）
 - ✅ **回补监控 `rewatch` 字段**：`{"strike": "1.75", "option_type": "call", "triggers": [0.04, 0.05]}`。update_positions.py 每次刷新被监控合约现价；report_generator.py 在 HTML 建议区和终端摘要输出监控状态，现价 ≥ 最低触发线时显示"🚨已触发"。触发线/合约可配，其他组合也可挂 rewatch

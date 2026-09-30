@@ -264,6 +264,100 @@ def generate_suggestion(analysis, position):
     
     return suggestions
 
+def load_trades_stats():
+    """读取 data/trades.json, 计算历史战绩统计。文件不存在/为空返回 None"""
+    trades_file = Path(__file__).parent.parent / 'data' / 'trades.json'
+    if not trades_file.exists():
+        return None
+    with open(trades_file) as f:
+        data = json.load(f)
+    trades = data.get('trades', [])
+    if not trades:
+        return None
+    pnls = [t['pnl_net'] for t in trades]
+    wins = [p for p in pnls if p > 0]
+    by_underlying = {}
+    for t in trades:
+        u = by_underlying.setdefault(t.get('underlying_name', t.get('underlying', '?')),
+                                     {'count': 0, 'pnl': 0.0})
+        u['count'] += 1
+        u['pnl'] += t['pnl_net']
+    return {
+        'trades': sorted(trades, key=lambda t: t['date'], reverse=True),
+        'count': len(trades),
+        'total_pnl': sum(pnls),
+        'win_rate': len(wins) / len(trades) * 100,
+        'avg_pnl': sum(pnls) / len(pnls),
+        'max_win': max(pnls),
+        'max_loss': min(pnls),
+        'by_underlying': by_underlying,
+    }
+
+
+def build_history_section(stats):
+    """生成'历史战绩'HTML区块"""
+    if not stats:
+        return ""
+    pnl_class = 'profit' if stats['total_pnl'] >= 0 else 'loss'
+    underlying_line = ' · '.join(
+        f"{name}: {u['count']}笔 {'+' if u['pnl'] >= 0 else ''}¥{u['pnl']:,.0f}"
+        for name, u in sorted(stats['by_underlying'].items()))
+    
+    recent_rows = ""
+    ACTION_LABEL = {'close_short_leg': '平卖腿', 'close_position': '整组平仓', 'close_short_put': '平卖Put'}
+    for t in stats['trades'][:5]:
+        t_class = 'profit' if t['pnl_net'] >= 0 else 'loss'
+        label = f"{t.get('underlying_name','')} {ACTION_LABEL.get(t.get('action'), t.get('action',''))} {t['strike']}{t.get('option_type','')[:1].upper()}"
+        recent_rows += f"""
+                <tr>
+                    <td>{t['date']}</td>
+                    <td>{label}</td>
+                    <td>{t['open_price']:.4f} → {t['close_price']:.4f} ×{t['lots']}</td>
+                    <td class="{t_class}">{'+' if t['pnl_net'] >= 0 else ''}¥{t['pnl_net']:,.0f}</td>
+                </tr>"""
+    
+    return f"""
+        <div class="delivery-section">
+            <h3>📜 历史战绩（已实现平仓）</h3>
+            <div class="metrics-grid" style="margin-bottom:12px">
+                <div class="metric">
+                    <div class="label">累计平仓</div>
+                    <div class="value">{stats['count']}笔</div>
+                </div>
+                <div class="metric">
+                    <div class="label">累计已实现盈亏</div>
+                    <div class="value {pnl_class}">{'+' if stats['total_pnl'] >= 0 else ''}¥{stats['total_pnl']:,.0f}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">胜率</div>
+                    <div class="value">{stats['win_rate']:.0f}%</div>
+                </div>
+                <div class="metric">
+                    <div class="label">平均单笔</div>
+                    <div class="value {'profit' if stats['avg_pnl'] >= 0 else 'loss'}">{'+' if stats['avg_pnl'] >= 0 else ''}¥{stats['avg_pnl']:,.0f}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">最大单笔盈利</div>
+                    <div class="value profit">+¥{stats['max_win']:,.0f}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">最大单笔亏损</div>
+                    <div class="value {'loss' if stats['max_loss'] < 0 else 'neutral'}">{'+' if stats['max_loss'] >= 0 else ''}¥{stats['max_loss']:,.0f}</div>
+                </div>
+            </div>
+            <div class="delivery-note" style="margin-bottom:10px">按标的: {underlying_line}（盈亏为净额, 已扣交易成本）</div>
+            <table class="delivery-table">
+                <thead>
+                    <tr><th>日期</th><th>交易</th><th>开→平 ×手数</th><th>净盈亏</th></tr>
+                </thead>
+                <tbody>{recent_rows}
+                </tbody>
+            </table>
+            <div class="delivery-note">最近5笔 · 完整流水见 data/trades.json</div>
+        </div>
+"""
+
+
 def generate_html_report(positions_data):
     """生成HTML报告"""
     # 多标的: 按 underlying 分组, 各取最新行情
@@ -338,6 +432,7 @@ def generate_html_report(positions_data):
             </tr>"""
     
     # 生成HTML
+    history_section = build_history_section(load_trades_stats())
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -611,7 +706,7 @@ def generate_html_report(positions_data):
             </table>
             <div class="delivery-note">额度上限由人工判断，此处仅提示各到期日若被指派/主动行权接货所需准备的现金</div>
         </div>
-"""
+{history_section}"""
     
     for a in analyses:
         pos = a['position']
@@ -929,6 +1024,14 @@ def run_analysis():
             total_pnl += analysis['pnl']
     
     print(f"总浮盈: {'+' if total_pnl >= 0 else ''}¥{total_pnl:,.0f}")
+    
+    # 历史战绩 (已实现平仓)
+    stats = load_trades_stats()
+    if stats:
+        print()
+        print(f"📜 历史战绩: 累计平仓{stats['count']}笔, 已实现{'+' if stats['total_pnl'] >= 0 else ''}¥{stats['total_pnl']:,.0f}, 胜率{stats['win_rate']:.0f}%, 平均单笔{'+' if stats['avg_pnl'] >= 0 else ''}¥{stats['avg_pnl']:,.0f}")
+        for t in stats['trades'][:3]:
+            print(f"  {t['date']} {t.get('underlying_name','')} {t['strike']}{t.get('option_type','')[:1].upper()} {t['open_price']:.4f}→{t['close_price']:.4f} ×{t['lots']}: {'+' if t['pnl_net'] >= 0 else ''}¥{t['pnl_net']:,.0f}")
     
     # 接货额度提示 (按到期日)
     delivery_by_expiry = {}
