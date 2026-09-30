@@ -72,7 +72,9 @@ def main():
                 print(f"  组合#{pos['id']} long call@{long_strike}: {p:.4f}")
             else:
                 print(f"  ⚠️ 组合#{pos['id']}: call@{long_strike} 不在链中")
-            if short_strike in calls:
+            if pos['legs']['short'].get('status') == 'closed':
+                print(f"  组合#{pos['id']} short call@{short_strike}: 已平仓({pos['legs']['short'].get('close_date')} @{pos['legs']['short'].get('close_price')}), 跳过")
+            elif short_strike in calls:
                 p = mid_price(calls[short_strike])
                 pos['legs']['short']['current_price'] = round(p, 4)
                 print(f"  组合#{pos['id']} short call@{short_strike}: {p:.4f}")
@@ -89,6 +91,16 @@ def main():
         else:
             print(f"  ⚠️ 组合#{pos['id']}: 未知类型 {pos['type']}，跳过")
             continue
+
+        # 回补监控 (rewatch): 刷新被监控合约的当前价, 供报告判断是否触发
+        rw = pos.get('rewatch')
+        if rw and rw.get('strike'):
+            book = calls if rw.get('option_type') == 'call' else puts
+            if rw['strike'] in book:
+                rw['current_price'] = round(mid_price(book[rw['strike']]), 4)
+                print(f"  组合#{pos['id']} rewatch {rw['option_type']}@{rw['strike']}: {rw['current_price']:.4f} (触发线 {rw.get('triggers')})")
+            else:
+                print(f"  ⚠️ 组合#{pos['id']}: rewatch {rw['option_type']}@{rw['strike']} 不在链中")
 
         pos['current_prices']['underlying'] = chain['etf_price']
         pos['current_prices']['update_time'] = chain['timestamp']

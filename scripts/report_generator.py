@@ -14,14 +14,15 @@ def calculate_pnl(position):
     legs = position['legs']
     long_leg = legs['long']
     short_leg = legs['short']
+    short_closed = short_leg.get('status') == 'closed'
     
     # 开仓成本
     open_debit = long_leg['open_price'] - short_leg['open_price']
     open_value = open_debit * position['lots'] * position['contract_multiplier']
     
-    # 当前价值
+    # 当前价值（卖出腿已平则用平仓价锁定, 即含已实现盈亏）
     current_long = long_leg['current_price']
-    current_short = short_leg['current_price']
+    current_short = short_leg['close_price'] if short_closed else short_leg['current_price']
     current_spread = current_long - current_short
     current_value = current_spread * position['lots'] * position['contract_multiplier']
     
@@ -29,12 +30,17 @@ def calculate_pnl(position):
     pnl = current_value - open_value
     pnl_pct = (pnl / open_value) * 100 if open_value > 0 else 0
     
-    # 接货成本（如果ETF在long_strike和short_strike之间到期）
-    delivery_cost = position['long_strike'] + open_debit
+    # 接货成本/盈亏平衡（卖出腿已平: 平仓支出抬高实际成本）
+    close_extra = short_leg['close_price'] if short_closed else 0
+    delivery_cost = position['long_strike'] + open_debit + close_extra
     
-    # 最大收益（如果ETF >= short_strike到期）
-    max_spread_value = position['short_strike'] - position['long_strike']
-    max_profit = (max_spread_value - open_debit) * position['lots'] * position['contract_multiplier']
+    # 最大收益（卖出腿已平 → 剩单腿买Call, 上不封顶）
+    if short_closed:
+        max_spread_value = None
+        max_profit = None
+    else:
+        max_spread_value = position['short_strike'] - position['long_strike']
+        max_profit = (max_spread_value - open_debit) * position['lots'] * position['contract_multiplier']
     
     # 剩余天数 / 已持仓天数 / 总持仓周期
     expiry = datetime.strptime(position['expiry'], '%Y-%m-%d')
@@ -45,7 +51,8 @@ def calculate_pnl(position):
     total_days = (expiry - datetime.strptime(open_date, '%Y-%m-%d')).days if open_date else None
     
     # 盈亏平衡
-    breakeven = position['long_strike'] + open_debit
+    # 盈亏平衡（同接货成本口径）
+    breakeven = delivery_cost
     
     # 安全距离（距离盈亏平衡的百分比）
     etf_price = position['current_prices']['underlying']
@@ -58,12 +65,16 @@ def calculate_pnl(position):
         annualized_return = 0
     
     # 理论最大收租收益率（持有到期的最大收益 / 投入资金, 及其按总周期年化）
-    max_return_pct = (max_profit / open_value * 100) if open_value > 0 else 0
-    max_annual_return = (max_return_pct * 365 / total_days) if total_days and total_days > 0 else None
+    if max_profit is not None and open_value > 0:
+        max_return_pct = max_profit / open_value * 100
+        max_annual_return = (max_return_pct * 365 / total_days) if total_days and total_days > 0 else None
+    else:
+        max_return_pct = None
+        max_annual_return = None
     
     # 盈利里程碑
     profit_milestones = []
-    if max_profit > 0:
+    if max_profit is not None and max_profit > 0:
         profit_ratio = pnl / max_profit
         if profit_ratio >= 0.5:
             profit_milestones.append(f"✅ 已达最大盈利的50%以上（{profit_ratio*100:.0f}%）")
@@ -71,7 +82,12 @@ def calculate_pnl(position):
             profit_milestones.append(f"✅ 已达最大盈利的33%以上（{profit_ratio*100:.0f}%）")
     
     # 状态判断
-    if etf_price >= position['short_strike']:
+    if short_closed:
+        if etf_price > breakeven:
+            status = f"🟢 单腿买Call持有中(卖出腿已平), ETF高于盈亏平衡{breakeven:.4f}"
+        else:
+            status = f"🟡 单腿买Call持有中(卖出腿已平), ETF低于盈亏平衡{breakeven:.4f}"
+    elif etf_price >= position['short_strike']:
         status = f"✅ 已达最大盈利区(ETF≥{position['short_strike']})"
     elif etf_price >= position['long_strike']:
         status = f"⚠️ 接货区({position['long_strike']}≤ETF<{position['short_strike']})"
@@ -189,8 +205,24 @@ def generate_suggestion(analysis, position):
     
     suggestions = []
     
+    # 卖出腿已平 → 单腿买Call: 提示做T回补计划与theta风险
+    if position['type'] == 'bull_call_spread' and position['legs']['short'].get('status') == 'closed':
+        rw = position.get('rewatch') or {}
+        rprice = rw.get('current_price')
+        triggers = rw.get('triggers') or []
+        if rprice is not None and triggers:
+            t1 = min(triggers)
+            if rprice >= t1:
+                suggestions.insert(0, f"🚨 回补触发! {rw.get('strike','')}{rw.get('option_type','C').upper()} 现价 {rprice:.4f} ≥ {t1:.3f}，可卖出补齐价差腿")
+            else:
+                suggestions.append(f"👀 回补监控: {rw.get('strike','')}{rw.get('option_type','C').upper()} 现价 {rprice:.4f}，触发线 {'/'.join(f'{t:.3f}' for t in sorted(triggers))}，未到")
+        plan = position.get('plan', '节后上涨后回补卖出腿')
+        suggestions.append(f"🔄 卖出腿已平仓, 现为单腿买Call(上不封顶但theta独自承担)。回补计划: {plan}")
+        if days <= 30:
+            suggestions.append(f"⏰ 剩{days}天到期, 单腿买Call时间价值衰减快, 回补宜早不宜迟")
+    
     # 盈利里程碑建议
-    if max_profit > 0:
+    if max_profit is not None and max_profit > 0:
         profit_ratio = pnl / max_profit
         if profit_ratio >= 0.5:
             if days <= 14:
@@ -273,7 +305,10 @@ def generate_html_report(positions_data):
         uname = pos.get('underlying_name', pos['underlying'])
         if pos['type'] == 'bull_call_spread':
             cash_needed = pos['long_strike'] * pos['lots'] * pos['contract_multiplier']
-            label = f"{uname} {pos['long_strike']}/{pos['short_strike']}价差×{pos['lots']}组"
+            if pos['legs']['short'].get('status') == 'closed':
+                label = f"{uname} 单腿买Call {pos['long_strike']}×{pos['lots']}组(卖腿已平)"
+            else:
+                label = f"{uname} {pos['long_strike']}/{pos['short_strike']}价差×{pos['lots']}组"
         elif pos['type'] == 'short_put':
             cash_needed = pos['strike'] * pos['lots'] * pos['contract_multiplier']
             label = f"{uname} 卖Put {pos['strike']}×{pos['lots']}手"
@@ -673,24 +708,62 @@ def generate_html_report(positions_data):
             </div>
 """
         else:
-            # 牛市价差双腿卡片
+            # 牛市价差双腿卡片（卖出腿可能已平 → 单腿买Call）
             long_leg = pos['legs']['long']
             short_leg = pos['legs']['short']
+            short_closed = short_leg.get('status') == 'closed'
             long_change = ((long_leg['current_price'] - long_leg['open_price']) / long_leg['open_price']) * 100
-            short_change = ((short_leg['current_price'] - short_leg['open_price']) / short_leg['open_price']) * 100
+            short_change = ((short_leg.get('close_price', short_leg['current_price']) - short_leg['open_price']) / short_leg['open_price']) * 100
+            strategy_badge = f"单腿买Call {pos['long_strike']} (价差卖出腿已平)" if short_closed else f"牛市价差 {pos['long_strike']}/{pos['short_strike']}"
             
             html += f"""
         <div class="position-card">
             <h2>
                 组合 #{pos['id']}
                 <span class="badge">{pos.get('underlying_name', pos['underlying'])}</span>
-                <span class="badge">牛市价差 {pos['long_strike']}/{pos['short_strike']}</span>
+                <span class="badge">{strategy_badge}</span>
                 <span class="badge">{pos['expiry']} 到期</span>
                 <span class="badge">剩{a['days_to_expiry']}天</span>
                 <span class="badge">{pos['lots']}组</span>
                 {held_badge}
             </h2>
+"""
+            # 卖出腿行（已平显示平仓标记）
+            if short_closed:
+                short_row_html = f"""                        <tr>
+                            <td class="direction-sell">卖出(已平)</td>
+                            <td>{short_leg['strike']:.2f}</td>
+                            <td>{short_leg['open_price']:.4f}</td>
+                            <td>平@{short_leg['close_price']:.4f}</td>
+                            <td>
+                                <span class="price-change price-up">
+                                    {short_change:.1f}%
+                                </span>
+                            </td>
+                        </tr>"""
+            else:
+                short_row_html = f"""                        <tr>
+                            <td class="direction-sell">卖出</td>
+                            <td>{short_leg['strike']:.2f}</td>
+                            <td>{short_leg['open_price']:.4f}</td>
+                            <td>{short_leg['current_price']:.4f}</td>
+                            <td>
+                                <span class="price-change {'price-up' if short_change >= 0 else 'price-down'}">
+                                    {'+' if short_change >= 0 else ''}{short_change:.1f}%
+                                </span>
+                            </td>
+                        </tr>"""
             
+            max_profit_html = (f"<div class=\"value profit\">¥{a['max_profit']:,.0f}</div>"
+                               if a['max_profit'] is not None else
+                               "<div class=\"value neutral\">上不封顶(单腿)</div>")
+            if a['max_return_pct'] is not None:
+                annual_part = f" · 年化{a['max_annual_return']:.0f}%" if a.get('max_annual_return') else ""
+                max_return_html = f"<div class=\"value profit\">{a['max_return_pct']:.1f}%{annual_part}</div>"
+            else:
+                max_return_html = "<div class=\"value neutral\">—</div>"
+            
+            html += f"""
             <div class="legs-section">
                 <h3>持仓明细</h3>
                 <table class="legs-table">
@@ -715,17 +788,7 @@ def generate_html_report(positions_data):
                                 </span>
                             </td>
                         </tr>
-                        <tr>
-                            <td class="direction-sell">卖出</td>
-                            <td>{short_leg['strike']:.2f}</td>
-                            <td>{short_leg['open_price']:.4f}</td>
-                            <td>{short_leg['current_price']:.4f}</td>
-                            <td>
-                                <span class="price-change {'price-up' if short_change >= 0 else 'price-down'}">
-                                    {'+' if short_change >= 0 else ''}{short_change:.1f}%
-                                </span>
-                            </td>
-                        </tr>
+{short_row_html}
                     </tbody>
                 </table>
             </div>
@@ -740,7 +803,7 @@ def generate_html_report(positions_data):
                     <div class="value">¥{a['current_value']:,.0f}</div>
                 </div>
                 <div class="metric">
-                    <div class="label">浮动盈亏</div>
+                    <div class="label">{'盈亏(含已实现)' if short_closed else '浮动盈亏'}</div>
                     <div class="value {pnl_class}">{'+' if a['pnl'] >= 0 else ''}¥{a['pnl']:,.0f} ({a['pnl_pct']:+.1f}%)</div>
                 </div>
                 <div class="metric">
@@ -757,11 +820,11 @@ def generate_html_report(positions_data):
                 </div>
                 <div class="metric">
                     <div class="label">最大收益</div>
-                    <div class="value profit">¥{a['max_profit']:,.0f}</div>
+                    {max_profit_html}
                 </div>
                 <div class="metric">
                     <div class="label">理论最大收租收益率</div>
-                    <div class="value profit">{a['max_return_pct']:.1f}%{f" · 年化{a['max_annual_return']:.0f}%" if a.get('max_annual_return') else ""}</div>
+                    {max_return_html}
                 </div>
                 <div class="metric">
                     <div class="label">年化收益率</div>
@@ -847,10 +910,18 @@ def run_analysis():
                 print(f"  开仓: ¥{analysis['open_value']:,.0f}, 当前: ¥{analysis['current_value']:,.0f}")
             print(f"  浮盈: {'+' if analysis['pnl'] >= 0 else ''}¥{analysis['pnl']:,.0f} ({analysis['pnl_pct']:+.1f}%)")
             print(f"  接货成本: {analysis['delivery_cost']:.4f}, 盈亏平衡: {analysis['breakeven']:.4f}")
-            max_annual_str = f", 年化{analysis['max_annual_return']:.0f}%" if analysis.get('max_annual_return') else ""
-            print(f"  理论最大收租: {analysis['max_return_pct']:.1f}%{max_annual_str} (¥{analysis['max_profit']:,.0f})")
+            if analysis['max_return_pct'] is not None:
+                max_annual_str = f", 年化{analysis['max_annual_return']:.0f}%" if analysis.get('max_annual_return') else ""
+                print(f"  理论最大收租: {analysis['max_return_pct']:.1f}%{max_annual_str} (¥{analysis['max_profit']:,.0f})")
+            else:
+                print(f"  最大收益: 上不封顶(单腿买Call, 价差卖出腿已平)")
             print(f"  安全距离: {analysis['safety_margin']:+.1f}%, 当前年化: {analysis['annualized_return']:+.1f}%")
             print(f"  状态: {analysis['status']}")
+            rw = pos.get('rewatch') or {}
+            if rw.get('current_price') is not None and rw.get('triggers'):
+                t1 = min(rw['triggers'])
+                trig = "🚨已触发!" if rw['current_price'] >= t1 else "未到"
+                print(f"  👀 回补监控: {rw['strike']}{rw.get('option_type','call').upper()} 现价{rw['current_price']:.4f} / 触发线{'/'.join(f'{t:.3f}' for t in sorted(rw['triggers']))} ({trig})")
             if analysis['profit_milestones']:
                 for m in analysis['profit_milestones']:
                     print(f"  {m}")
@@ -866,7 +937,10 @@ def run_analysis():
             uname = pos.get('underlying_name', pos['underlying'])
             if pos['type'] == 'bull_call_spread':
                 cash = pos['long_strike'] * pos['lots'] * pos['contract_multiplier']
-                label = f"{uname} {pos['long_strike']}/{pos['short_strike']}价差×{pos['lots']}组"
+                if pos['legs']['short'].get('status') == 'closed':
+                    label = f"{uname} 单腿买Call {pos['long_strike']}×{pos['lots']}组(卖腿已平)"
+                else:
+                    label = f"{uname} {pos['long_strike']}/{pos['short_strike']}价差×{pos['lots']}组"
             elif pos['type'] == 'short_put':
                 cash = pos['strike'] * pos['lots'] * pos['contract_multiplier']
                 label = f"{uname} 卖Put {pos['strike']}×{pos['lots']}手"
