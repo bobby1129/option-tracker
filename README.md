@@ -125,6 +125,8 @@
 
 **多标的**：588000（科创50ETF）→ `option_chain_latest.json`（历史原名，scanner依赖）；510050（上证50ETF）→ `option_chain_510050_latest.json`。标的清单在 `fetch_chain_sina.py` 的 `UNDERLYINGS` 配置。
 
+**历史快照留档**：每次抓取除写 latest 外，同时写一份带时间戳的快照（`option_chain_{code}_YYYYMMDD_HHMMSS.json`）。快照=当时盘口完整记录（bid/ask/last/持仓量），用于事后复盘（IV regime验证、成交价合理性、滑点分析——行情API可查历史价但查不到历史盘口）。**保留不删**（2026-10-09用户决定）；无任何脚本读取，纯本地存档，.gitignore排除永不提交。
+
 **数据来源**：新浪财经期权T型报价接口（`fetch_chain_sina.py` 纯 requests 抓取，见"更新期权数据"）
 
 ## 使用方法
@@ -239,6 +241,9 @@ option-tracker/
 
 ### 2026-10-09
 
+- 🎯 covered call 硬红线（用户要求）：**行权价必须 ≥ 正股成本**，被行权也锁定正收益，绝不卖"行权即亏"的位置。当前50ETF成本3.03，最近合规档位3.1（各月年化均<5%，未达15%门槛 → 扫描0机会，属正常，等波动率/价格上来）
+- ✅ **.gitignore 全面落实提交红线**：显式排除 `data/positions.json`、`data/trades.json`、全部 `option_chain_*.json`（含latest与历史快照）、`reports/*`；并将历史上误跟踪的4个数据文件 `git rm --cached` 移出仓库（本地文件保留）。此后数据文件物理上不可能被误提交
+- 📝 期权链历史快照约定入README：带时间戳快照为盘口留档（复盘用），保留不删、无脚本读取、永不提交
 - ✅ 新增组合#6：科创50ETF 2026-10-28 卖Put 1.45×5手 @0.0366（接货成本1.4134）
 - 🎯 目标接货成本红线 `targets.max_cost` 从 1.65 下调至 **1.45**（scanner/报告标题自动跟随）
 - ✅ **covered call 扫描启用**：新增 `targets.cc_holdings` 正股持仓配置（50ETF 30000股 成本3.03，约2026-03-15买入，录入时已持208天）；scanner 按持仓标的多链扫描，只卖虚值/平值call、报价用bid、显示可卖手数与总收入；`has_etf` 字段废弃

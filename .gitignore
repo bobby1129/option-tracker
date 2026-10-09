@@ -1,4 +1,12 @@
 __pycache__/
 *.pyc
+
+# 实际持仓/交易数据 —— 永不提交（2026-09-28红线）
+data/positions.json
+data/trades.json
+
+# 行情缓存与历史快照 —— 永不提交（快照留档仅供本地复盘: bid/ask盘口+持仓量, API查不到历史盘口）
+data/option_chain_*.json
+reports/*.html
+reports/*.png
 reports/report_*.html
-data/option_chain_2026*.json
