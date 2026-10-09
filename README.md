@@ -30,9 +30,12 @@
 - 接货成本 < 目标价
 
 #### 卖Covered Call
-- 需要持有ETF现货
-- 年化收益 ≥ 15%
-
+- 正股持仓配置在 `targets.cc_holdings`（当前：50ETF 30000股 成本3.03，2026-03-15买入）
+- 只扫**虚值/平值** call（行权价 ≥ ETF现价；实值部分不是租金且锁亏正股）
+- **硬红线：行权价必须 ≥ 正股成本**（被行权也必须锁定正收益，绝不卖"行权即亏"的位置；2026-10-09用户明确要求）
+- 卖出腿报价用 **bid**（真实成交方向），无bid退回last
+- 年化收益 ≥ 15%，年化 = bid权利金 ÷ ETF现价 × 365/剩余天数
+- 按 cc_holdings 多标的扫描（对应 `option_chain_{code}_latest.json` 链文件），卡片显示可卖手数与权利金总收入
 年化门槛与接货成本红线均从 `positions.json` 的 `targets` 读取（单位：年化%，见下方配置说明），scanner 不再硬编码。
 
 **报告路径**：`reports/opportunities.html`
@@ -82,10 +85,18 @@
 ```
 
 **关键字段**：
-- `targets.max_cost`：目标接货成本（当前1.65）
+- `targets.max_cost`：目标接货成本（当前1.45，2026-10-09从1.65下调）
 - `targets.min_annual_spread`：价差/卖put年化门槛（%，当前100）
 - `targets.min_annual_cc`：covered call年化门槛（%，当前15）
-- `targets.has_etf`：是否持有ETF现货
+- `targets.cc_holdings`：正股持仓表（covered call扫描用），按标的代码分组：
+
+```json
+"cc_holdings": {
+  "510050": {"name": "50ETF", "shares": 30000, "cost": 3.03, "open_date": "2026-03-15"}
+}
+```
+
+可卖手数 = shares ÷ 10000（向下取整）。有持仓的标的才会进入 covered call 扫描；`has_etf` 字段已废弃（scanner 改读 `cc_holdings`）。
 
 **卖出Put（short_put）持仓结构**（单腿，无 long 腿）：
 
@@ -191,7 +202,7 @@ python3 scripts/fetch_chain_sina.py && python3 scripts/scanner.py
 
 1. 只做牛市价差、卖put、卖covered call三种
 2. 绝不裸卖call，尽可能不单买权
-3. 目标接货成本 < 1.65（可调整）
+3. 目标接货成本 < 1.45（可调整，2026-10-09从1.65下调）
 4. 只看最近3个合约期
 5. 年化门槛：价差/卖put ≥ 100%，covered call ≥ 15%
 6. 按年化从高到低排序
@@ -218,13 +229,20 @@ option-tracker/
 ## 交易框架备忘（Agent必读）
 
 - **提交红线（2026-09-28确立）**：git 只提交代码/文档改动（scripts/、README.md），**实际持仓与行情数据永不提交**（data/positions.json、data/trades.json、option_chain_*.json、reports/*.html 留本地）。用户忘了提醒时，Agent 须主动提醒并只 add 代码文件。
-- 两轴框架"收租+接货"：年化门槛（价差/卖put ≥100%，cc ≥15%）与接货成本红线（1.65）均在 `positions.json` 的 `targets` 配置，scanner 不硬编码。额度上限人工判断，报告按到期日提示接货额度。
+- 两轴框架"收租+接货"：年化门槛（价差/卖put ≥100%，cc ≥15%）与接货成本红线（1.45，2026-10-09从1.65下调）均在 `positions.json` 的 `targets` 配置，scanner 不硬编码。额度上限人工判断，报告按到期日提示接货额度。
 - IV regime 择时：上涨行情→牛市价差（call权利金厚，涨幅只封顶不亏 Vega）；下跌后→卖put（IV高 + 接货成本达标）。同一档 call 比 put 贵常是行权价网格错位，等距校正后 put skew 正常。
 - cron 链路：`fetch_chain_sina.py`（纯 requests 抓新浪期权链，OP_UP 逐月探测合约，去掉 C 后缀）→ `scanner.py`（只读缓存）；非交易日返回 `[SILENT]`。
 - 实盘券商为华泰；数据对标以华泰为准，HV 用 60 日窗口；ETF 期权交易成本约 7 元/手。
 - 持仓数据：`data/positions.json`。
 
 ## 更新日志
+
+### 2026-10-09
+
+- ✅ 新增组合#6：科创50ETF 2026-10-28 卖Put 1.45×5手 @0.0366（接货成本1.4134）
+- 🎯 目标接货成本红线 `targets.max_cost` 从 1.65 下调至 **1.45**（scanner/报告标题自动跟随）
+- ✅ **covered call 扫描启用**：新增 `targets.cc_holdings` 正股持仓配置（50ETF 30000股 成本3.03，约2026-03-15买入，录入时已持208天）；scanner 按持仓标的多链扫描，只卖虚值/平值call、报价用bid、显示可卖手数与总收入；`has_etf` 字段废弃
+- 🎯 covered call 硬红线（用户要求）：**行权价必须 ≥ 正股成本**，被行权也锁定正收益，绝不卖"行权即亏"的位置。当前50ETF成本3.03，最近合规档位3.1（各月年化均<5%，未达15%门槛 → 扫描0机会，属正常，等波动率/价格上来）
 
 ### 2026-09-30
 

@@ -8,11 +8,16 @@ from pathlib import Path
 
 def load_data():
     data_dir = Path(__file__).parent.parent / 'data'
+    chains = {}
     with open(data_dir / 'option_chain_latest.json') as f:
-        chain = json.load(f)
+        chains['588000'] = json.load(f)
+    p50 = data_dir / 'option_chain_510050_latest.json'
+    if p50.exists():
+        with open(p50) as f:
+            chains['510050'] = json.load(f)
     with open(data_dir / 'positions.json') as f:
         config_data = json.load(f)
-    return chain, config_data
+    return chains, config_data
 
 def scan_bull_call_spreads(chain, target_cost, min_annual):
     """扫描牛市价差机会"""
@@ -133,37 +138,55 @@ def scan_sell_puts(chain, target_cost, min_annual):
     
     return opportunities
 
-def scan_covered_calls(chain, min_annual, has_etf, etf_cost):
-    """扫描卖covered call机会"""
-    if not has_etf:
+def scan_covered_calls(chain, min_annual, holding):
+    """扫描卖covered call机会
+    holding: {"shares": 30000, "cost": 3.03, ...} 正股持仓, None/空则不扫描
+    """
+    if not holding or not chain:
         return []
-    
+
     etf_price = chain['etf_price']
+    max_lots = int(holding.get('shares', 0)) // 10000
+    if max_lots <= 0:
+        return []
+
     opportunities = []
-    
+
     for expiry, contract in chain['contracts'].items():
         expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
         days = (expiry_date - datetime.now()).days
         if days <= 0:
             continue
-        
+
         calls = contract['calls']
-        
+
         for strike_str, call_data in calls.items():
             strike = float(strike_str)
-            call_price = call_data['last']
-            
+            # 卖出腿用bid(真实成交方向), 无bid退回last
+            call_price = call_data.get('bid') or call_data.get('last')
+
             if call_price is None or call_price <= 0:
                 continue
-            
-            # 资金占用 = ETF价格 × 10000
+
+            # 只卖虚值/平值 call: 行权价低于现价的部分是内在价值, 不是租金,
+            # 且会立即锁定正股市价亏损
+            if strike < etf_price:
+                continue
+
+            # 硬红线: 行权价必须 ≥ 正股成本 — 被行权也锁定正收益(用户要求,
+            # 绝不卖"被行权即亏"的位置)
+            etf_cost = holding.get('cost')
+            if etf_cost and strike < etf_cost:
+                continue
+
+            # 资金占用 = ETF价格 × 10000 (每手, 正股已持有)
             capital = etf_price * 10000
             income = call_price * 10000
             annual = (income / capital) * (365 / days) * 100
-            
+
             if annual < min_annual:
                 continue
-            
+
             opportunities.append({
                 'strategy': '卖covered call',
                 'expiry': expiry,
@@ -173,9 +196,11 @@ def scan_covered_calls(chain, min_annual, has_etf, etf_cost):
                 'annual': annual,
                 'capital': capital,
                 'income': income,
-                'etf_cost': etf_cost
+                'max_lots': max_lots,
+                'total_income': income * max_lots,
+                'etf_cost': holding.get('cost')
             })
-    
+
     return opportunities
 
 def generate_report(spreads, puts, ccs, chain, config):
@@ -494,17 +519,26 @@ def generate_report(spreads, puts, ccs, chain, config):
         <div class="strategy-section">
             <h2>📊 卖covered call（年化 ≥ {config['min_annual_cc']}%）</h2>
 """
-    if not config['has_etf']:
+    cc_holdings = config.get('cc_holdings', {})
+    if not cc_holdings:
         html += """
-            <div class="no-opportunity">当前无持仓，无法卖covered call</div>
+            <div class="no-opportunity">当前无正股持仓，无法卖covered call</div>
 """
-    elif ccs:
+    else:
+        holding_desc = ' · '.join(
+            f"{h.get('name', code)} {h.get('shares',0):,}股 成本{h.get('cost','?')}"
+            for code, h in cc_holdings.items()
+        )
+        html += f"""
+            <div class="no-opportunity" style="color:#aaa;">正股持仓：{holding_desc}</div>
+"""
+    if ccs:
         html += '<div class="cards-grid">'
         for o in ccs:
             html += f"""
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">{o['expiry']}（{o['days']}天）</span>
+                    <span class="card-title">{o.get('underlying_name','')} {o['expiry']}（{o['days']}天）</span>
                     <span class="card-badge">{o['annual']:.1f}%</span>
                 </div>
                 <div class="card-body">
@@ -513,22 +547,26 @@ def generate_report(spreads, puts, ccs, chain, config):
                         <span class="card-value">{o['strike']:.2f}</span>
                     </div>
                     <div class="card-row">
-                        <span class="card-label">权利金</span>
+                        <span class="card-label">权利金(bid)</span>
                         <span class="card-value">{o['call_price']:.4f}</span>
                     </div>
                     <div class="card-row">
-                        <span class="card-label">资金占用</span>
-                        <span class="card-value">¥{o['capital']:,.0f}</span>
+                        <span class="card-label">可卖手数</span>
+                        <span class="card-value">{o['max_lots']}手</span>
                     </div>
                     <div class="card-row">
-                        <span class="card-label">权利金收入</span>
-                        <span class="card-value">¥{o['income']:,.0f}</span>
+                        <span class="card-label">权利金总收入</span>
+                        <span class="card-value highlight">¥{o['total_income']:,.0f}</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">每手资金占用</span>
+                        <span class="card-value">¥{o['capital']:,.0f}</span>
                     </div>
                 </div>
             </div>
 """
         html += '</div>'
-    else:
+    elif cc_holdings:
         html += """
             <div class="no-opportunity">暂无符合条件的卖covered call机会</div>
 """
@@ -547,44 +585,50 @@ def generate_report(spreads, puts, ccs, chain, config):
     return html
 
 def main():
-    chain, config_data = load_data()
-    
+    chains, config_data = load_data()
+    chain = chains.get('588000')  # 价差/卖put 仍只扫科创50
+
     # 扫描配置 (门槛从positions.json targets读取, 单位: 年化%)
     target_cost = config_data['targets']['max_cost']
     min_annual_spread = config_data['targets'].get('min_annual_spread', 100)
     min_annual_cc = config_data['targets'].get('min_annual_cc', 15)
-    has_etf = config_data['targets'].get('has_etf', False)
-    etf_cost = config_data['targets'].get('etf_cost', None)
-    
+    cc_holdings = config_data['targets'].get('cc_holdings', {})
+
     config = {
         'target_delivery_cost': target_cost,
         'min_annual_spread': min_annual_spread,
         'min_annual_put': min_annual_spread,
         'min_annual_cc': min_annual_cc,
-        'has_etf': has_etf,
-        'etf_cost': etf_cost
+        'has_etf': bool(cc_holdings),
+        'cc_holdings': cc_holdings,
     }
-    
+
     # 扫描三种策略
     spreads = scan_bull_call_spreads(chain, target_cost, min_annual_spread)
     puts = scan_sell_puts(chain, target_cost, min_annual_spread)
-    ccs = scan_covered_calls(chain, min_annual_cc, has_etf, etf_cost)
-    
+    ccs = []
+    for code, holding in cc_holdings.items():
+        opts = scan_covered_calls(chains.get(code), min_annual_cc, holding)
+        for o in opts:
+            o['underlying'] = code
+            o['underlying_name'] = holding.get('name', code)
+        ccs.extend(opts)
+
     # 按年化排序
     spreads.sort(key=lambda x: x['annual'], reverse=True)
     puts.sort(key=lambda x: x['annual'], reverse=True)
     ccs.sort(key=lambda x: x['annual'], reverse=True)
-    
+
     # 生成报告
     html = generate_report(spreads, puts, ccs, chain, config)
-    
+
     # 保存报告
     reports_dir = Path(__file__).parent.parent / 'reports'
     reports_dir.mkdir(exist_ok=True)
-    
+
     with open(reports_dir / 'opportunities.html', 'w', encoding='utf-8') as f:
         f.write(html)
-    
+
     # 打印摘要
     print(f"ETF价格: {chain['etf_price']}")
     print(f"扫描时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -593,21 +637,28 @@ def main():
     print(f"卖put机会: {len(puts)} 个")
     print(f"卖covered call机会: {len(ccs)} 个")
     print()
-    
+
     if spreads:
         print("Top 5 牛市价差:")
         for o in spreads[:5]:
             print(f"  {o['expiry']} {o['long_strike']}/{o['short_strike']} "
                   f"净支出={o['net_debit']:.4f} 接货={o['delivery_cost']:.4f} "
                   f"年化={o['annual']:.1f}%")
-    
+
     if puts:
         print("\nTop 5 卖put:")
         for o in puts[:5]:
             print(f"  {o['expiry']} 行权价={o['strike']:.2f} "
                   f"权利金={o['put_price']:.4f} 接货={o['delivery_cost']:.4f} "
                   f"年化={o['annual']:.1f}%")
-    
+
+    if ccs:
+        print("\nTop 5 卖covered call:")
+        for o in ccs[:5]:
+            print(f"  {o['underlying_name']} {o['expiry']} 行权价={o['strike']:.2f} "
+                  f"权利金={o['call_price']:.4f} 年化={o['annual']:.1f}% "
+                  f"(最多{o['max_lots']}手, 总收入¥{o['total_income']:,.0f})")
+
     print(f"\n报告已保存: {reports_dir / 'opportunities.html'}")
 
 if __name__ == '__main__':
