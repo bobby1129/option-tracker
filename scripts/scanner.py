@@ -19,8 +19,12 @@ def load_data():
         config_data = json.load(f)
     return chains, config_data
 
-def scan_bull_call_spreads(chain, target_cost, min_annual):
-    """扫描牛市价差机会"""
+def scan_bull_call_spreads(chain, target_cost, min_annual, max_time_value=0.01):
+    """扫描牛市价差机会
+    max_time_value: 买腿允许的最大时间价值（每份），深实值call按平价关系必有
+    正时间价值（=同行权价put的时间价值），硬要求≤内在价值在真实盘口下永远不通过。
+    时间价值会在租金公式中被自动扣除（租金=卖腿权利金-买腿时间价值），太大则年化不达标。
+    """
     etf_price = chain['etf_price']
     opportunities = []
     
@@ -35,18 +39,22 @@ def scan_bull_call_spreads(chain, target_cost, min_annual):
         
         for i, long_s in enumerate(strikes):
             for short_s in strikes[i+1:]:
-                long_price = calls[str(long_s)]['last']
-                short_price = calls[str(short_s)]['last']
+                long_data = calls[str(long_s)]
+                short_data = calls[str(short_s)]
+                # 盘口价：买腿用ask、卖腿用bid（真实成交方向），无盘口退回last
+                long_price = long_data.get('ask') or long_data.get('last')
+                short_price = short_data.get('bid') or short_data.get('last')
                 
                 if long_price is None or short_price is None:
                     continue
                 
-                # 买入腿必须深度实值：价格 <= 内在价值（即几乎没有时间价值）
+                # 买入腿必须深度实值且时间价值≤容差（时间价值在租金中自动扣除）
                 intrinsic = etf_price - long_s
                 if intrinsic <= 0:
                     continue  # 虚值，跳过
-                if long_price > intrinsic:
-                    continue  # 有时间价值，跳过
+                time_value = long_price - intrinsic
+                if time_value < 0 or time_value > max_time_value:
+                    continue  # 负时间价值=盘口异常；超容差=不够"深"实值
                 
                 # 卖出腿必须虚值（大于现价），从最大收益出发
                 if short_s <= etf_price:
@@ -60,11 +68,18 @@ def scan_bull_call_spreads(chain, target_cost, min_annual):
                 if delivery_cost >= target_cost:
                     continue
                 
+                # 租金 = 卖腿权利金 - 买腿时间价值 = 现价 - 接货成本
+                # （ETF到期横盘不动也能赚到的钱，不含方向钱）
+                rent = etf_price - delivery_cost
+                if rent <= 0:
+                    continue
+                
                 max_profit = (short_s - long_s) - net_debit
                 if max_profit <= 0:
                     continue
                 
-                annual = (max_profit / long_price) * (365 / days) * 100
+                # 年化只按租金算（分母=净权利金支出）；最大收益含宽度方向钱，单独展示
+                annual = (rent / net_debit) * (365 / days) * 100
                 if annual < min_annual:
                     continue
                 
@@ -80,6 +95,7 @@ def scan_bull_call_spreads(chain, target_cost, min_annual):
                     'time_value': long_price - intrinsic,
                     'net_debit': net_debit,
                     'delivery_cost': delivery_cost,
+                    'rent': rent,
                     'max_profit': max_profit,
                     'annual': annual,
                     'capital': net_debit * 10000
@@ -452,7 +468,11 @@ def generate_report(spreads, puts, ccs, chain, config):
                         <span class="card-value highlight">¥{o['delivery_cost']:.4f}</span>
                     </div>
                     <div class="card-row">
-                        <span class="card-label">最大收益</span>
+                        <span class="card-label">租金(横盘收益)</span>
+                        <span class="card-value">{o['rent']:.4f}/张</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">最大收益(含方向钱)</span>
                         <span class="card-value">¥{o['max_profit']:.4f}/张</span>
                     </div>
                 </div>
@@ -592,6 +612,7 @@ def main():
     target_cost = config_data['targets']['max_cost']
     min_annual_spread = config_data['targets'].get('min_annual_spread', 100)
     min_annual_cc = config_data['targets'].get('min_annual_cc', 15)
+    max_tv_spread = config_data['targets'].get('max_tv_spread', 0.01)
     cc_holdings = config_data['targets'].get('cc_holdings', {})
 
     config = {
@@ -604,7 +625,7 @@ def main():
     }
 
     # 扫描三种策略
-    spreads = scan_bull_call_spreads(chain, target_cost, min_annual_spread)
+    spreads = scan_bull_call_spreads(chain, target_cost, min_annual_spread, max_tv_spread)
     puts = scan_sell_puts(chain, target_cost, min_annual_spread)
     ccs = []
     for code, holding in cc_holdings.items():
@@ -643,7 +664,8 @@ def main():
         for o in spreads[:5]:
             print(f"  {o['expiry']} {o['long_strike']}/{o['short_strike']} "
                   f"净支出={o['net_debit']:.4f} 接货={o['delivery_cost']:.4f} "
-                  f"年化={o['annual']:.1f}%")
+                  f"租金={o['rent']:.4f} 年化={o['annual']:.1f}% "
+                  f"最大收益={o['max_profit']:.4f}/张")
 
     if puts:
         print("\nTop 5 卖put:")
