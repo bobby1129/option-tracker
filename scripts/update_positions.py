@@ -106,6 +106,20 @@ def main():
         pos['current_prices']['update_time'] = chain['timestamp']
         updated += 1
 
+    # 正股持仓: 用链中ETF最新价刷新 current_price
+    price_map = {}
+    for u, chain in chains.items():
+        price_map[u] = chain['etf_price']
+    # 已结算组合也可能提供ETF价(其current_prices仍在), 补充进price_map
+    for pos in positions_data['positions']:
+        u = pos['underlying']
+        if u not in price_map and pos.get('current_prices'):
+            price_map[u] = pos['current_prices']['underlying']
+    for h in positions_data.get('stock_holdings', []):
+        if h['underlying'] in price_map:
+            h['current_price'] = price_map[h['underlying']]
+            print(f"✅ 正股 {h['underlying_name']} {h['shares']:,}股: 现价 {h['current_price']:.3f} (成本 {h['cost']:.3f})")
+
     with open(POSITIONS_FILE, 'w') as f:
         json.dump(positions_data, f, indent=2, ensure_ascii=False)
 

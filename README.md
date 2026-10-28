@@ -10,6 +10,7 @@
 - 浮动盈亏、接货成本、安全距离
 - 盈利里程碑提示（1/3、1/2最大收益）
 - 智能操作建议（基于7条原则）
+- **盈亏三口径汇总**：①权利金盈亏（期权腿已实现+浮动）②接货后盈亏（正股浮动）③总体盈亏（见下方配置说明）
 - **接货额度提示**：按到期日汇总"若接货需准备的现金"（K1×组数×10000），额度上限人工判断
 
 **报告路径**：`reports/latest.html`
@@ -103,6 +104,26 @@
 ```
 
 可卖手数 = shares ÷ 10000（向下取整）。有持仓的标的才会进入 covered call 扫描；`has_etf` 字段已废弃（scanner 改读 `cc_holdings`）。
+
+**持仓状态机**（position.status，2026-10-28起）：
+- `open`：正常持仓，按链上市价估值
+- `pending_delivery`：义务仓到期实值、行权通知未到，腿写 `settlement_price`（put作废=0），报告挂"⏳待行权交割"角标；E+1交割确认后转正式接货（写 stock_holdings + trades.json `exercised` 流水）
+- `expired`：权利仓到期归零，`settlement_price: 0.0`，挂"🔚到期归零"角标，同时记 trades.json `expired_worthless` 流水
+
+**正股持仓 stock_holdings**（positions.json 顶层数组，2026-10-28新增）：
+```json
+"stock_holdings": [
+  {"id": "s1", "underlying": "588000", "underlying_name": "科创50ETF",
+   "shares": 100000, "cost": 1.422, "open_date": "2026-10-19",
+   "source": "market_buy", "current_price": 1.354, "note": "..."}
+]
+```
+source: `market_buy`（市价买入）| `exercise`（行权接货）。update_positions.py 每次用链中ETF价刷新 current_price。
+
+**盈亏三口径汇总**（report_generator.py `calculate_portfolio_summary`，HTML区块+终端摘要）：
+1. ① 权利金盈亏 = 全部期权腿现金流（已实现+浮动，含手续费；到期腿按结算价锁定）
+2. ② 接货后盈亏 = 正股（市价买入+预期/已行权接货）(现价−接货价)×股数；行权接货成本=**行权价**（权利金已在①计入，不重复），净成本(行权价−权利金)列仅参考
+3. ③ 总体盈亏 = ①+②
 
 **卖出Put（short_put）持仓结构**（单腿，无 long 腿）：
 
@@ -244,6 +265,17 @@ option-tracker/
 - 持仓数据：`data/positions.json`。
 
 ## 更新日志
+
+### 2026-10-28（到期日结算 + 盈亏三口径）
+
+- ✅ **持仓状态机新增 `expired` / `pending_delivery`**：到期归零的权利仓（如组合#1 买腿1.45C，ETF收1.354<1.45虚值归零，权利金-30,110计入 trades.json trade_id=3）；到期实值待行权的义务仓（#4 50ETF 2.9P、#5 科创50 1.6P、#6 科创50 1.45P，E+1交割确认后转正式接货）。腿上加 `settlement_price` 字段（归零=0），calculate_pnl/卡片/摘要均按结算价估值并挂角标
+- ✅ **新增正股持仓 `stock_holdings`**（positions.json 顶层数组）：`{id, underlying, underlying_name, shares, cost, open_date, source, current_price, note}`。首笔=科创50ETF 100,000股@1.422（2026-10-19市价买入，变相接货对应#1买腿）。update_positions.py 每次刷新其 current_price
+- ✅ **报告新增"📊 盈亏三口径汇总"**（HTML区块+终端摘要，report_generator.py `calculate_portfolio_summary`）：
+  - ① 权利金盈亏 = 全部期权腿现金流（已实现+浮动，含平仓手续费7元/手；到期腿按结算价锁定）
+  - ② 接货后盈亏 = 正股持仓（市价买入+预期/已行权接货）(现价−接货价)×股数；**行权接货成本用行权价**，权利金已在口径①计入不重复；净成本(行权价−权利金)列仅作参考
+  - ③ 总体盈亏 = ①+②
+- ✅ 接货额度提示只统计 `open` 持仓（待行权组合已进接货明细，不再重复占额度）
+- ⚠️ 待办：明日(10-29)交割单出来后，把 #4/#5/#6 从 `pending_delivery` 转正式接货（写入 stock_holdings + trades.json exercised 流水）
 
 ### 2026-10-21
 

@@ -8,10 +8,18 @@ from pathlib import Path
 def calculate_pnl(position):
     """
     计算组合盈亏（按 type 分发：bull_call_spread / short_put）
+    到期结算状态(expired/pending_delivery)的腿按 settlement_price 估值(归零=0)
     """
-    if position['type'] == 'short_put':
-        return calculate_short_put_pnl(position)
-    legs = position['legs']
+    pos = position
+    if pos.get('status') in ('expired', 'pending_delivery'):
+        import copy
+        pos = copy.deepcopy(position)
+        for leg in pos['legs'].values():
+            if 'settlement_price' in leg and leg.get('status') != 'closed':
+                leg['current_price'] = leg['settlement_price']
+    if pos['type'] == 'short_put':
+        return calculate_short_put_pnl(pos)
+    legs = pos['legs']
     long_leg = legs['long']
     short_leg = legs['short']
     short_closed = short_leg.get('status') == 'closed'
@@ -304,7 +312,7 @@ def build_history_section(stats):
         for name, u in sorted(stats['by_underlying'].items()))
     
     recent_rows = ""
-    ACTION_LABEL = {'close_short_leg': '平卖腿', 'close_position': '整组平仓', 'close_short_put': '平卖Put'}
+    ACTION_LABEL = {'close_short_leg': '平卖腿', 'close_position': '整组平仓', 'close_short_put': '平卖Put', 'expired_worthless': '到期归零', 'exercised': '被行权'}
     for t in stats['trades'][:5]:
         t_class = 'profit' if t['pnl_net'] >= 0 else 'loss'
         label = f"{t.get('underlying_name','')} {ACTION_LABEL.get(t.get('action'), t.get('action',''))} {t['strike']}{t.get('option_type','')[:1].upper()}"
@@ -358,6 +366,151 @@ def build_history_section(stats):
 """
 
 
+def calc_position_option_pnl(pos):
+    """单个组合的权利金盈亏(已实现+浮动)。
+    - open: 期权腿按现价估值(浮动)
+    - pending_delivery/expired: 按结算价(settlement_price, 归零=0)锁定已实现
+    - 已平仓腿按 close_price 锁定, 并扣平仓手续费(7元/手)
+    """
+    lots = pos['lots']
+    mult = pos['contract_multiplier']
+    settled = pos['status'] in ('expired', 'pending_delivery')
+    if pos['type'] == 'short_put':
+        leg = pos['legs']['short']
+        eff_price = leg.get('settlement_price', 0.0) if settled else leg['current_price']
+        return (leg['open_price'] - eff_price) * lots * mult
+    long_leg = pos['legs']['long']
+    short_leg = pos['legs']['short']
+    long_eff = long_leg.get('settlement_price', 0.0) if settled else long_leg['current_price']
+    pnl = (long_eff - long_leg['open_price']) * lots * mult
+    if short_leg.get('status') == 'closed':
+        pnl += (short_leg['open_price'] - short_leg['close_price']) * lots * mult
+        pnl -= 7.0 * lots
+    else:
+        pnl += (short_leg['open_price'] - short_leg['current_price']) * lots * mult
+    return pnl
+
+
+def build_price_map(positions_data):
+    """各标的最新ETF价 {underlying_code: price}"""
+    pm = {}
+    times = {}
+    for p in positions_data['positions']:
+        cp = p.get('current_prices')
+        if cp:
+            k = p['underlying']
+            if k not in times or cp['update_time'] > times[k]:
+                pm[k] = cp['underlying']
+                times[k] = cp['update_time']
+    return pm
+
+
+def calculate_portfolio_summary(positions_data):
+    """三口径盈亏汇总: ①权利金盈亏 ②接货后盈亏 ③总体盈亏
+    - 权利金盈亏: 全部期权腿现金流(已实现+浮动, 含平仓手续费)
+    - 接货后盈亏: 正股持仓(市价买入 + 预期/已行权接货)的 (现价-成本)×股数
+      行权接货的成本用行权价(权利金已计入口径①, 不重复计)
+    - 总体 = ① + ②
+    """
+    price_map = build_price_map(positions_data)
+    # ① 权利金
+    opt_items = []
+    opt_total = 0.0
+    for pos in positions_data['positions']:
+        if pos['status'] not in ('open', 'pending_delivery', 'expired'):
+            continue
+        pnl = calc_position_option_pnl(pos)
+        opt_total += pnl
+        uname = pos.get('underlying_name', pos['underlying'])
+        if pos['type'] == 'short_put':
+            desc = f"#{pos['id']} {uname} 卖Put {pos['strike']} ({pos['expiry']})"
+        else:
+            desc = f"#{pos['id']} {uname} {pos['long_strike']}/{pos['short_strike']}价差 ({pos['expiry']})"
+        st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零'}[pos['status']]
+        opt_items.append({'desc': desc, 'pnl': pnl, 'state': st})
+    # ② 接货
+    dlv_items = []
+    dlv_total = 0.0
+    for h in positions_data.get('stock_holdings', []):
+        cur = price_map.get(h['underlying'])
+        pnl = (cur - h['cost']) * h['shares'] if cur is not None else None
+        if pnl is not None:
+            dlv_total += pnl
+        dlv_items.append({
+            'desc': f"{h['underlying_name']} 市价买入 ({h['open_date']})",
+            'shares': h['shares'], 'cost': h['cost'], 'net_cost': h['cost'],
+            'current': cur, 'pnl': pnl, 'state': '持有中'})
+    for pos in positions_data['positions']:
+        if pos['status'] == 'pending_delivery' and pos['type'] == 'short_put':
+            cur = price_map.get(pos['underlying'])
+            shares = pos['lots'] * pos['contract_multiplier']
+            strike = pos['strike']
+            prem = pos['legs']['short']['open_price']
+            pnl = (cur - strike) * shares if cur is not None else None
+            if pnl is not None:
+                dlv_total += pnl
+            dlv_items.append({
+                'desc': f"#{pos['id']} {pos.get('underlying_name','')} Put{strike} 行权接货 ({pos['expiry']})",
+                'shares': shares, 'cost': strike, 'net_cost': strike - prem,
+                'current': cur, 'pnl': pnl, 'state': '待交割'})
+    return {
+        'option_pnl': opt_total, 'option_items': opt_items,
+        'delivery_pnl': dlv_total, 'delivery_items': dlv_items,
+        'total_pnl': opt_total + dlv_total,
+    }
+
+
+def build_portfolio_summary_html(summary):
+    """生成'盈亏三口径'HTML区块"""
+    def cls(v):
+        return 'profit' if v >= 0 else 'loss'
+    def sign(v):
+        return f"{'+' if v >= 0 else ''}¥{v:,.0f}"
+    opt_rows = ""
+    for it in summary['option_items']:
+        opt_rows += f"""
+                <tr><td>{it['desc']}</td><td>{it['state']}</td><td class="{cls(it['pnl'])}">{sign(it['pnl'])}</td></tr>"""
+    dlv_rows = ""
+    for it in summary['delivery_items']:
+        pnl_str = sign(it['pnl']) if it['pnl'] is not None else '—'
+        pcls = cls(it['pnl']) if it['pnl'] is not None else 'neutral'
+        cur_str = f"{it['current']:.3f}" if it['current'] is not None else '—'
+        dlv_rows += f"""
+                <tr><td>{it['desc']}</td><td>{it['shares']:,}股</td><td>{it['cost']:.3f}</td><td>{it['net_cost']:.4f}</td><td>{cur_str}</td><td>{it['state']}</td><td class="{pcls}">{pnl_str}</td></tr>"""
+    return f"""
+        <div class="delivery-section">
+            <h3>📊 盈亏三口径汇总</h3>
+            <div class="metrics-grid" style="margin-bottom:12px">
+                <div class="metric">
+                    <div class="label">① 权利金盈亏 (期权腿, 已实现+浮动)</div>
+                    <div class="value {cls(summary['option_pnl'])}" style="font-size:20px">{sign(summary['option_pnl'])}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">② 接货后盈亏 (正股, 浮动)</div>
+                    <div class="value {cls(summary['delivery_pnl'])}" style="font-size:20px">{sign(summary['delivery_pnl'])}</div>
+                </div>
+                <div class="metric">
+                    <div class="label">③ 总体盈亏 (①+②)</div>
+                    <div class="value {cls(summary['total_pnl'])}" style="font-size:22px">{sign(summary['total_pnl'])}</div>
+                </div>
+            </div>
+            <h3 style="font-size:13px;color:#aaa;margin:10px 0 6px">① 权利金明细</h3>
+            <table class="delivery-table">
+                <thead><tr><th>组合</th><th>状态</th><th>盈亏</th></tr></thead>
+                <tbody>{opt_rows}
+                </tbody>
+            </table>
+            <h3 style="font-size:13px;color:#aaa;margin:14px 0 6px">② 接货明细（行权接货成本=行权价，权利金已在口径①计入不重复）</h3>
+            <table class="delivery-table">
+                <thead><tr><th>持仓</th><th>股数</th><th>接货价</th><th>净成本(扣权利金)</th><th>现价</th><th>状态</th><th>盈亏</th></tr></thead>
+                <tbody>{dlv_rows}
+                </tbody>
+            </table>
+            <div class="delivery-note">待交割 = 到期实值预期被行权, E+1 交割确认; 净成本列仅作参考(权利金盈亏单独列示于口径①)</div>
+        </div>
+"""
+
+
 def generate_html_report(positions_data):
     """生成HTML报告"""
     # 多标的: 按 underlying 分组, 各取最新行情
@@ -382,20 +535,36 @@ def generate_html_report(positions_data):
     total_current = 0
     total_pnl = 0
     
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired')
+    STATUS_BADGE = {'pending_delivery': '⏳ 待行权交割', 'expired': '🔚 到期归零'}
+    import copy as _copy
     for pos in positions_data['positions']:
-        if pos['status'] == 'open':
+        if pos['status'] in ACTIVE_STATUS:
+            # 到期结算组合: 卡片展示用结算价替换市价, 并挂状态角标
+            if pos['status'] in ('expired', 'pending_delivery'):
+                pos = _copy.deepcopy(pos)
+                for leg in pos['legs'].values():
+                    if 'settlement_price' in leg and leg.get('status') != 'closed':
+                        leg['current_price'] = leg['settlement_price']
             analysis = calculate_pnl(pos)
             analysis['position'] = pos
+            analysis['status_badge'] = STATUS_BADGE.get(pos['status'], '')
             analyses.append(analysis)
             total_open += analysis['open_value']
             total_current += analysis['current_value']
             total_pnl += analysis['pnl']
+    
+    # 盈亏三口径汇总（权利金 / 接货 / 总体）
+    portfolio_summary = calculate_portfolio_summary(positions_data)
+    portfolio_section = build_portfolio_summary_html(portfolio_summary)
     
     # 按到期日汇总接货额度 (行权买入正股所需现金, 不含已付权利金)
     # 价差: S到期落在[K1,K2)时行权K1腿接货, 需 K1×lots×multiplier
     delivery_by_expiry = {}
     for a in analyses:
         pos = a['position']
+        if pos['status'] != 'open':
+            continue  # 待行权/已到期组合已进"接货明细", 不再占接货额度
         uname = pos.get('underlying_name', pos['underlying'])
         if pos['type'] == 'bull_call_spread':
             cash_needed = pos['long_strike'] * pos['lots'] * pos['contract_multiplier']
@@ -694,7 +863,7 @@ def generate_html_report(positions_data):
                 </div>
             </div>
         </div>
-
+{portfolio_section}
         <div class="delivery-section">
             <h3>💰 接货额度提示（按到期日，行权买入正股所需现金）</h3>
             <table class="delivery-table">
@@ -723,6 +892,7 @@ def generate_html_report(positions_data):
             # 卖put: 价格上涨=不利 → 颜色反转
             change_class = 'price-down' if short_change >= 0 else 'price-up'
             uname = pos.get('underlying_name', pos['underlying'])
+            status_badge = f"<span class=\"badge\">{a.get('status_badge')}</span>" if a.get('status_badge') else ""
             html += f"""
         <div class="position-card">
             <h2>
@@ -733,6 +903,7 @@ def generate_html_report(positions_data):
                 <span class="badge">剩{a['days_to_expiry']}天</span>
                 <span class="badge">{pos['lots']}手</span>
                 {held_badge}
+                {status_badge}
             </h2>
             
             <div class="legs-section">
@@ -810,6 +981,7 @@ def generate_html_report(positions_data):
             long_change = ((long_leg['current_price'] - long_leg['open_price']) / long_leg['open_price']) * 100
             short_change = ((short_leg.get('close_price', short_leg['current_price']) - short_leg['open_price']) / short_leg['open_price']) * 100
             strategy_badge = f"单腿买Call {pos['long_strike']} (价差卖出腿已平)" if short_closed else f"牛市价差 {pos['long_strike']}/{pos['short_strike']}"
+            status_badge2 = f"<span class=\"badge\">{a.get('status_badge')}</span>" if a.get('status_badge') else ""
             
             html += f"""
         <div class="position-card">
@@ -821,6 +993,7 @@ def generate_html_report(positions_data):
                 <span class="badge">剩{a['days_to_expiry']}天</span>
                 <span class="badge">{pos['lots']}组</span>
                 {held_badge}
+                {status_badge2}
             </h2>
 """
             # 卖出腿行（已平显示平仓标记）
@@ -993,15 +1166,25 @@ def run_analysis():
     print()
     
     total_pnl = 0
+    import copy as _copy2
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired')
+    STATUS_MARK = {'pending_delivery': ' [⏳待行权交割]', 'expired': ' [🔚到期归零]'}
     for pos in positions_data['positions']:
-        if pos['status'] == 'open':
+        if pos['status'] in ACTIVE_STATUS:
+            raw_pos = pos
+            if pos['status'] in ('expired', 'pending_delivery'):
+                pos = _copy2.deepcopy(pos)
+                for leg in pos['legs'].values():
+                    if 'settlement_price' in leg and leg.get('status') != 'closed':
+                        leg['current_price'] = leg['settlement_price']
             analysis = calculate_pnl(pos)
             held = f", 已持{analysis['held_days']}天" if analysis.get('held_days') is not None else ""
+            mark = STATUS_MARK.get(raw_pos['status'], '')
             if pos['type'] == 'short_put':
-                print(f"组合#{pos['id']} ({pos.get('underlying_name','')} 卖Put {pos['strike']} {pos['expiry']}, {pos['lots']}手, 剩{analysis['days_to_expiry']}天{held}):")
+                print(f"组合#{pos['id']} ({pos.get('underlying_name','')} 卖Put {pos['strike']} {pos['expiry']}, {pos['lots']}手, 剩{analysis['days_to_expiry']}天{held}){mark}:")
                 print(f"  权利金收入: ¥{analysis['open_value']:,.0f}, 当前平仓成本: ¥{analysis['current_value']:,.0f}")
             else:
-                print(f"组合#{pos['id']} ({pos.get('underlying_name','')} {pos['long_strike']}/{pos['short_strike']}, 剩{analysis['days_to_expiry']}天{held}):")
+                print(f"组合#{pos['id']} ({pos.get('underlying_name','')} {pos['long_strike']}/{pos['short_strike']}, 剩{analysis['days_to_expiry']}天{held}){mark}:")
                 print(f"  开仓: ¥{analysis['open_value']:,.0f}, 当前: ¥{analysis['current_value']:,.0f}")
             print(f"  浮盈: {'+' if analysis['pnl'] >= 0 else ''}¥{analysis['pnl']:,.0f} ({analysis['pnl_pct']:+.1f}%)")
             print(f"  接货成本: {analysis['delivery_cost']:.4f}, 盈亏平衡: {analysis['breakeven']:.4f}")
@@ -1024,6 +1207,22 @@ def run_analysis():
             total_pnl += analysis['pnl']
     
     print(f"总浮盈: {'+' if total_pnl >= 0 else ''}¥{total_pnl:,.0f}")
+    
+    # 盈亏三口径汇总
+    ps = calculate_portfolio_summary(positions_data)
+    print()
+    print("=" * 52)
+    print(f"📊 盈亏三口径汇总")
+    print(f"  ① 权利金盈亏(期权腿, 已实现+浮动): {'+' if ps['option_pnl'] >= 0 else ''}¥{ps['option_pnl']:,.0f}")
+    for it in ps['option_items']:
+        print(f"     {it['desc']} [{it['state']}]: {'+' if it['pnl'] >= 0 else ''}¥{it['pnl']:,.0f}")
+    print(f"  ② 接货后盈亏(正股浮动): {'+' if ps['delivery_pnl'] >= 0 else ''}¥{ps['delivery_pnl']:,.0f}")
+    for it in ps['delivery_items']:
+        pnl_str = f"{'+' if it['pnl'] >= 0 else ''}¥{it['pnl']:,.0f}" if it['pnl'] is not None else '—'
+        net = f", 净成本{it['net_cost']:.4f}" if it['net_cost'] != it['cost'] else ""
+        print(f"     {it['desc']}: {it['shares']:,}股 @{it['cost']:.3f}{net} [{it['state']}] → {pnl_str}")
+    print(f"  ③ 总体盈亏(①+②): {'+' if ps['total_pnl'] >= 0 else ''}¥{ps['total_pnl']:,.0f}")
+    print("=" * 52)
     
     # 历史战绩 (已实现平仓)
     stats = load_trades_stats()
