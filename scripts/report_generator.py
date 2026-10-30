@@ -8,10 +8,10 @@ from pathlib import Path
 def calculate_pnl(position):
     """
     计算组合盈亏（按 type 分发：bull_call_spread / short_put）
-    到期结算状态(expired/pending_delivery)的腿按 settlement_price 估值(归零=0)
+    到期结算状态(expired/pending_delivery/exercised)的腿按 settlement_price 估值(归零=0)
     """
     pos = position
-    if pos.get('status') in ('expired', 'pending_delivery'):
+    if pos.get('status') in ('expired', 'pending_delivery', 'exercised'):
         import copy
         pos = copy.deepcopy(position)
         for leg in pos['legs'].values():
@@ -369,12 +369,12 @@ def build_history_section(stats):
 def calc_position_option_pnl(pos):
     """单个组合的权利金盈亏(已实现+浮动)。
     - open: 期权腿按现价估值(浮动)
-    - pending_delivery/expired: 按结算价(settlement_price, 归零=0)锁定已实现
+    - pending_delivery/expired/exercised: 按结算价(settlement_price, 归零=0)锁定已实现
     - 已平仓腿按 close_price 锁定, 并扣平仓手续费(7元/手)
     """
     lots = pos['lots']
     mult = pos['contract_multiplier']
-    settled = pos['status'] in ('expired', 'pending_delivery')
+    settled = pos['status'] in ('expired', 'pending_delivery', 'exercised')
     if pos['type'] == 'short_put':
         leg = pos['legs']['short']
         eff_price = leg.get('settlement_price', 0.0) if settled else leg['current_price']
@@ -417,7 +417,7 @@ def calculate_portfolio_summary(positions_data):
     opt_items = []
     opt_total = 0.0
     for pos in positions_data['positions']:
-        if pos['status'] not in ('open', 'pending_delivery', 'expired'):
+        if pos['status'] not in ('open', 'pending_delivery', 'expired', 'exercised'):
             continue
         pnl = calc_position_option_pnl(pos)
         opt_total += pnl
@@ -426,7 +426,7 @@ def calculate_portfolio_summary(positions_data):
             desc = f"#{pos['id']} {uname} 卖Put {pos['strike']} ({pos['expiry']})"
         else:
             desc = f"#{pos['id']} {uname} {pos['long_strike']}/{pos['short_strike']}价差 ({pos['expiry']})"
-        st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零'}[pos['status']]
+        st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零', 'exercised': '被行权(权利金锁定)'}[pos['status']]
         opt_items.append({'desc': desc, 'pnl': pnl, 'state': st})
     # ② 接货
     dlv_items = []
@@ -437,7 +437,8 @@ def calculate_portfolio_summary(positions_data):
         if pnl is not None:
             dlv_total += pnl
         dlv_items.append({
-            'desc': f"{h['underlying_name']} 市价买入 ({h['open_date']})",
+            'desc': (f"{h['underlying_name']} 行权接货 ({h['open_date']})" if h.get('source') == 'exercise'
+                     else f"{h['underlying_name']} 市价买入 ({h['open_date']})"),
             'shares': h['shares'], 'cost': h['cost'], 'net_cost': h['cost'],
             'current': cur, 'pnl': pnl, 'state': '持有中'})
     for pos in positions_data['positions']:
@@ -535,13 +536,13 @@ def generate_html_report(positions_data):
     total_current = 0
     total_pnl = 0
     
-    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired')
-    STATUS_BADGE = {'pending_delivery': '⏳ 待行权交割', 'expired': '🔚 到期归零'}
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised')
+    STATUS_BADGE = {'pending_delivery': '⏳ 待行权交割', 'expired': '🔚 到期归零', 'exercised': '✅ 已行权交割'}
     import copy as _copy
     for pos in positions_data['positions']:
         if pos['status'] in ACTIVE_STATUS:
             # 到期结算组合: 卡片展示用结算价替换市价, 并挂状态角标
-            if pos['status'] in ('expired', 'pending_delivery'):
+            if pos['status'] in ('expired', 'pending_delivery', 'exercised'):
                 pos = _copy.deepcopy(pos)
                 for leg in pos['legs'].values():
                     if 'settlement_price' in leg and leg.get('status') != 'closed':
@@ -1167,8 +1168,8 @@ def run_analysis():
     
     total_pnl = 0
     import copy as _copy2
-    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired')
-    STATUS_MARK = {'pending_delivery': ' [⏳待行权交割]', 'expired': ' [🔚到期归零]'}
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised')
+    STATUS_MARK = {'pending_delivery': ' [⏳待行权交割]', 'expired': ' [🔚到期归零]', 'exercised': ' [✅已行权交割]'}
     for pos in positions_data['positions']:
         if pos['status'] in ACTIVE_STATUS:
             raw_pos = pos
