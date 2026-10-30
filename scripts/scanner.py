@@ -19,7 +19,7 @@ def load_data():
         config_data = json.load(f)
     return chains, config_data
 
-def scan_bull_call_spreads(chain, target_cost, min_annual, max_time_value=0.01):
+def scan_bull_call_spreads(chain, target_cost, min_annual, max_time_value=0.01, min_days=10):
     """扫描牛市价差机会
     max_time_value: 买腿允许的最大时间价值（每份），深实值call按平价关系必有
     正时间价值（=同行权价put的时间价值），硬要求≤内在价值在真实盘口下永远不通过。
@@ -31,7 +31,7 @@ def scan_bull_call_spreads(chain, target_cost, min_annual, max_time_value=0.01):
     for expiry, contract in chain['contracts'].items():
         expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
         days = (expiry_date - datetime.now()).days
-        if days <= 0:
+        if days <= min_days:
             continue
         
         calls = contract['calls']
@@ -103,7 +103,7 @@ def scan_bull_call_spreads(chain, target_cost, min_annual, max_time_value=0.01):
     
     return opportunities
 
-def scan_sell_puts(chain, target_cost, min_annual):
+def scan_sell_puts(chain, target_cost, min_annual, min_days=10):
     """扫描卖put机会"""
     etf_price = chain['etf_price']
     opportunities = []
@@ -111,7 +111,7 @@ def scan_sell_puts(chain, target_cost, min_annual):
     for expiry, contract in chain['contracts'].items():
         expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
         days = (expiry_date - datetime.now()).days
-        if days <= 0:
+        if days <= min_days:
             continue
         
         puts = contract['puts']
@@ -154,24 +154,26 @@ def scan_sell_puts(chain, target_cost, min_annual):
     
     return opportunities
 
-def scan_covered_calls(chain, min_annual, holding):
-    """扫描卖covered call机会
-    holding: {"shares": 30000, "cost": 3.03, ...} 正股持仓, None/空则不扫描
+def scan_covered_calls(chain, min_annual, holding, min_days=10):
+    """扫描卖covered call机会(单批次独立扫描, 不与其他批次合并)
+    holding: {"shares": 30000, "cost": 3.03, "cc_breakeven": 2.8745, ...} 正股持仓批次
+    硬红线: 行权价 ≥ cc_breakeven(该批次盈亏平衡) — 被行权也确保这笔赚钱(用户2026-10-30要求);
+    cc_breakeven 缺省退回 cost。盈亏平衡口径: 接货价-已收权利金; 市价买入批次摊入对应组合净盈亏
     """
     if not holding or not chain:
         return []
-
     etf_price = chain['etf_price']
     max_lots = int(holding.get('shares', 0)) // 10000
     if max_lots <= 0:
         return []
 
+    breakeven = holding.get('cc_breakeven') or holding.get('cost')
     opportunities = []
 
     for expiry, contract in chain['contracts'].items():
         expiry_date = datetime.strptime(expiry, '%Y-%m-%d')
         days = (expiry_date - datetime.now()).days
-        if days <= 0:
+        if days <= min_days:
             continue
 
         calls = contract['calls']
@@ -189,10 +191,8 @@ def scan_covered_calls(chain, min_annual, holding):
             if strike < etf_price:
                 continue
 
-            # 硬红线: 行权价必须 ≥ 正股成本 — 被行权也锁定正收益(用户要求,
-            # 绝不卖"被行权即亏"的位置)
-            etf_cost = holding.get('cost')
-            if etf_cost and strike < etf_cost:
+            # 硬红线: 行权价 ≥ 该批次盈亏平衡 — 被行权这笔也锁定赚钱
+            if breakeven and strike < breakeven:
                 continue
 
             # 资金占用 = ETF价格 × 10000 (每手, 正股已持有)
@@ -214,7 +214,9 @@ def scan_covered_calls(chain, min_annual, holding):
                 'income': income,
                 'max_lots': max_lots,
                 'total_income': income * max_lots,
-                'etf_cost': holding.get('cost')
+                'etf_cost': holding.get('cost'),
+                'breakeven': breakeven,
+                'batch': holding.get('batch_label', ''),
             })
 
     return opportunities
@@ -417,6 +419,7 @@ def generate_report(spreads, puts, ccs, chain, config):
             <div class="config-item">目标接货成本: <span class="config-value">¥{config['target_delivery_cost']:.2f}</span></div>
             <div class="config-item">价差/卖put门槛: <span class="config-value">≥{config['min_annual_spread']}%</span></div>
             <div class="config-item">covered call门槛: <span class="config-value">≥{config['min_annual_cc']}%</span></div>
+            <div class="config-item">剩余天数过滤: <span class="config-value">≤{config.get('min_scan_days', 10)}天忽略(年化虚高)</span></div>
             <div class="config-item">持仓状态: <span class="config-value">{'有货' if config['has_etf'] else '无货'}</span></div>
         </div>
         
@@ -539,18 +542,18 @@ def generate_report(spreads, puts, ccs, chain, config):
         <div class="strategy-section">
             <h2>📊 卖covered call（年化 ≥ {config['min_annual_cc']}%）</h2>
 """
-    cc_holdings = config.get('cc_holdings', {})
-    if not cc_holdings:
+    cc_batches = config.get('cc_batches', [])
+    if not cc_batches:
         html += """
             <div class="no-opportunity">当前无正股持仓，无法卖covered call</div>
 """
     else:
-        holding_desc = ' · '.join(
-            f"{h.get('name', code)} {h.get('shares',0):,}股 成本{h.get('cost','?')}"
-            for code, h in cc_holdings.items()
+        batch_desc = '<br>'.join(
+            f"{b['batch_label']} · 可卖{b['shares']//10000}手 · 行权价红线≥{b.get('cc_breakeven', b.get('cost'))}"
+            for b in cc_batches
         )
         html += f"""
-            <div class="no-opportunity" style="color:#aaa;">正股持仓：{holding_desc}</div>
+            <div class="no-opportunity" style="color:#aaa;">正股持仓（按批次独立扫描）：<br>{batch_desc}</div>
 """
     if ccs:
         html += '<div class="cards-grid">'
@@ -563,8 +566,16 @@ def generate_report(spreads, puts, ccs, chain, config):
                 </div>
                 <div class="card-body">
                     <div class="card-row">
+                        <span class="card-label">持仓批次</span>
+                        <span class="card-value">{o.get('batch','')}</span>
+                    </div>
+                    <div class="card-row">
                         <span class="card-label">行权价</span>
                         <span class="card-value">{o['strike']:.2f}</span>
+                    </div>
+                    <div class="card-row">
+                        <span class="card-label">批次盈亏平衡</span>
+                        <span class="card-value">{o.get('breakeven'):.4f}</span>
                     </div>
                     <div class="card-row">
                         <span class="card-label">权利金(bid)</span>
@@ -586,7 +597,7 @@ def generate_report(spreads, puts, ccs, chain, config):
             </div>
 """
         html += '</div>'
-    elif cc_holdings:
+    elif cc_batches:
         html += """
             <div class="no-opportunity">暂无符合条件的卖covered call机会</div>
 """
@@ -613,26 +624,51 @@ def main():
     min_annual_spread = config_data['targets'].get('min_annual_spread', 100)
     min_annual_cc = config_data['targets'].get('min_annual_cc', 15)
     max_tv_spread = config_data['targets'].get('max_tv_spread', 0.01)
+    # 剩余天数过滤: 到期日太近的合约年化虚高(权利金/极少天数), 直接忽略(2026-10-30用户要求)
+    min_days = config_data['targets'].get('min_scan_days', 10)
     cc_holdings = config_data['targets'].get('cc_holdings', {})
+
+    # 构建covered call扫描批次: 同标的也按批次分开扫, 各批用自己的盈亏平衡做行权价红线
+    # (cc_holdings老仓 + stock_holdings每笔接货/买入, 2026-10-30用户要求)
+    cc_batches = []
+    for code, h in cc_holdings.items():
+        cc_batches.append({
+            'underlying': code, 'name': h.get('name', code),
+            'shares': h.get('shares', 0), 'cost': h.get('cost'),
+            'cc_breakeven': h.get('cc_breakeven', h.get('cost')),
+            'batch_label': f"{h.get('name', code)} 老仓{h.get('shares',0):,}股(成本{h.get('cost')})",
+        })
+    for h in config_data.get('stock_holdings', []):
+        if int(h.get('shares', 0)) // 10000 <= 0:
+            continue
+        src = '行权接货' if h.get('source') == 'exercise' else '市价买入'
+        cc_batches.append({
+            'underlying': h['underlying'], 'name': h.get('underlying_name', h['underlying']),
+            'shares': h['shares'], 'cost': h.get('cost'),
+            'cc_breakeven': h.get('cc_breakeven', h.get('cost')),
+            'batch_label': f"{h.get('underlying_name','')} {src}{h['shares']:,}股({h.get('open_date','')} 平衡{h.get('cc_breakeven', h.get('cost'))})",
+        })
 
     config = {
         'target_delivery_cost': target_cost,
         'min_annual_spread': min_annual_spread,
         'min_annual_put': min_annual_spread,
         'min_annual_cc': min_annual_cc,
-        'has_etf': bool(cc_holdings),
+        'min_scan_days': min_days,
+        'has_etf': bool(cc_batches),
         'cc_holdings': cc_holdings,
+        'cc_batches': cc_batches,
     }
 
     # 扫描三种策略
-    spreads = scan_bull_call_spreads(chain, target_cost, min_annual_spread, max_tv_spread)
-    puts = scan_sell_puts(chain, target_cost, min_annual_spread)
+    spreads = scan_bull_call_spreads(chain, target_cost, min_annual_spread, max_tv_spread, min_days)
+    puts = scan_sell_puts(chain, target_cost, min_annual_spread, min_days)
     ccs = []
-    for code, holding in cc_holdings.items():
-        opts = scan_covered_calls(chains.get(code), min_annual_cc, holding)
+    for batch in cc_batches:
+        opts = scan_covered_calls(chains.get(batch['underlying']), min_annual_cc, batch, min_days)
         for o in opts:
-            o['underlying'] = code
-            o['underlying_name'] = holding.get('name', code)
+            o['underlying'] = batch['underlying']
+            o['underlying_name'] = batch['name']
         ccs.extend(opts)
 
     # 按年化排序
@@ -677,7 +713,7 @@ def main():
     if ccs:
         print("\nTop 5 卖covered call:")
         for o in ccs[:5]:
-            print(f"  {o['underlying_name']} {o['expiry']} 行权价={o['strike']:.2f} "
+            print(f"  [{o.get('batch','')}] {o['expiry']} 行权价={o['strike']:.2f} "
                   f"权利金={o['call_price']:.4f} 年化={o['annual']:.1f}% "
                   f"(最多{o['max_lots']}手, 总收入¥{o['total_income']:,.0f})")
 
