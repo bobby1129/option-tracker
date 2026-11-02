@@ -163,7 +163,8 @@ def scan_covered_calls(chain, min_annual, holding, min_days=10):
     if not holding or not chain:
         return []
     etf_price = chain['etf_price']
-    max_lots = int(holding.get('shares', 0)) // 10000
+    # 可卖手数 = 正股手数 − 已备兑卖出持仓手数(covered_lots, 避免重复推荐已占用的正股)
+    max_lots = int(holding.get('shares', 0)) // 10000 - int(holding.get('covered_lots', 0))
     if max_lots <= 0:
         return []
 
@@ -630,23 +631,33 @@ def main():
 
     # 构建covered call扫描批次: 同标的也按批次分开扫, 各批用自己的盈亏平衡做行权价红线
     # (cc_holdings老仓 + stock_holdings每笔接货/买入, 2026-10-30用户要求)
+    # 已被备兑卖Call持仓覆盖的手数要扣除(2026-11-02): covered_holding 指向批次id或标的代码
+    covered_lots = {}   # key: 批次id(如's2')或cc_holdings代码(如'510050') → 已卖手数
+    for p in config_data.get('positions', []):
+        if p.get('status') == 'open' and p.get('type') == 'covered_call':
+            k = p.get('covered_holding') or p.get('underlying')
+            covered_lots[k] = covered_lots.get(k, 0) + p.get('lots', 0)
     cc_batches = []
     for code, h in cc_holdings.items():
+        sold = covered_lots.get(code, 0)
         cc_batches.append({
             'underlying': code, 'name': h.get('name', code),
             'shares': h.get('shares', 0), 'cost': h.get('cost'),
             'cc_breakeven': h.get('cc_breakeven', h.get('cost')),
-            'batch_label': f"{h.get('name', code)} 老仓{h.get('shares',0):,}股(成本{h.get('cost')})",
+            'covered_lots': sold,
+            'batch_label': f"{h.get('name', code)} 老仓{h.get('shares',0):,}股(成本{h.get('cost')})" + (f"[已备兑{sold}手]" if sold else ""),
         })
     for h in config_data.get('stock_holdings', []):
-        if int(h.get('shares', 0)) // 10000 <= 0:
+        sold = covered_lots.get(h.get('id'), 0)
+        if int(h.get('shares', 0)) // 10000 - sold <= 0:
             continue
         src = '行权接货' if h.get('source') == 'exercise' else '市价买入'
         cc_batches.append({
             'underlying': h['underlying'], 'name': h.get('underlying_name', h['underlying']),
             'shares': h['shares'], 'cost': h.get('cost'),
             'cc_breakeven': h.get('cc_breakeven', h.get('cost')),
-            'batch_label': f"{h.get('underlying_name','')} {src}{h['shares']:,}股({h.get('open_date','')} 平衡{h.get('cc_breakeven', h.get('cost'))})",
+            'covered_lots': sold,
+            'batch_label': f"{h.get('underlying_name','')} {src}{h['shares']:,}股({h.get('open_date','')} 平衡{h.get('cc_breakeven', h.get('cost'))})" + (f"[已备兑{sold}手]" if sold else ""),
         })
 
     config = {

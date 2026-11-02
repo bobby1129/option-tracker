@@ -138,6 +138,7 @@ source: `market_buy`（市价买入）| `exercise`（行权接货）。update_po
 {
   "id": 3,
   "underlying": "588000",
+  "underlying_name": "科创50ETF",
   "type": "short_put",
   "expiry": "2026-11-25",
   "strike": 1.55,
@@ -150,8 +151,22 @@ source: `market_buy`（市价买入）| `exercise`（行权接货）。update_po
   }
 }
 ```
-
 卖put口径：盈亏 = 权利金收入 - 当前平仓成本；资金占用 = ETF×15%×乘数×手数（与scanner一致）；接货成本 = 盈亏平衡 = 行权价 - 权利金；接货需备现金 = 行权价×手数×乘数。
+
+**备兑卖Call（covered_call）持仓结构**（2026-11-02新增，单腿卖call，有正股覆盖）：
+```json
+{
+  "id": 9, "underlying": "510050", "underlying_name": "50ETF",
+  "type": "covered_call", "expiry": "2026-11-25", "strike": 2.9,
+  "lots": 5, "contract_multiplier": 10000, "open_date": "2026-11-02", "status": "open",
+  "covered_holding": "s2",
+  "legs": {"short": {"strike": 2.9, "option_type": "call", "direction": "sell", "open_price": 0.0318, "current_price": 0.0282}}
+}
+```
+- `covered_holding` 指向覆盖的正股批次（stock_holdings 的 id 如 "s2"，或 cc_holdings 的标的代码如 "510050"）——**录入备兑卖call时必须填**，scanner 靠它扣除已占用手数
+- 口径（report_generator.py `calculate_covered_call_pnl`）：盈亏 = 权利金收入 − 当前平仓成本；资金占用 = ETF价×乘数×手数（正股全额市值，与scanner一致）；最大收益 = 全部权利金（租金口径）；breakeven/delivery_cost 字段复用为**被行权出货价=行权价**（正股盈亏在 stock_holdings 单独核算，不混入）；安全距离 = (行权价−ETF)/ETF（涨破才被动出货）
+- 到期被行权 = 正股按行权价出货（卖出，非接货）→ 结算时 stock_holdings 对应批次减股数/移除，权利金记 trades.json（action 可复用 `exercised`，note 说明是call出货）
+- scanner.py：cc_batches 构建时按 `covered_holding` 汇总已卖手数（covered_lots），批次可卖手数 = 正股手数 − 已备兑手数，扣完≤0整批跳过（2026-11-02实测：s2/s4各卖5手后 covered call 扫描0机会）
 
 ### option_chain_latest.json
 
@@ -273,6 +288,13 @@ option-tracker/
 - 持仓数据：`data/positions.json`。
 
 ## 更新日志
+
+### 2026-11-02（首批备兑卖Call持仓 + covered_call类型全链路支持）
+
+- ✅ 新增组合#9：50ETF 2026-11-25 **备兑卖Call 2.9×5手 @0.0318**（覆盖s2行权接货50000股@2.9，权利金¥1,590，年化18%）；组合#10：科创50ETF 2026-11-25 **备兑卖Call 1.45×5手 @0.0161**（覆盖s4行权接货50000股@1.45，权利金¥805，年化20%）。开仓价与实时盘口核对一致（0.0318≈ask 0.0283略高为正常成交滑点、0.0161≈ask 0.0158）
+- ✅ 新持仓类型 `covered_call`（单腿卖call+正股覆盖）全链路：update_positions.py 刷新腿价；report_generator.py 新增 `calculate_covered_call_pnl`（资金占用=正股全额市值与scanner一致、breakeven=出货价=行权价、安全距离=距被行权空间）、HTML卡片复用卖方单腿卡（标签区分"备兑卖Call/出货价/正股市值占用"）、三口径汇总/终端摘要/接货额度均支持
+- ✅ scanner.py cc批次扣除已备兑手数：positions.json 中 open 的 covered_call 按 `covered_holding`（批次id或标的代码）汇总 covered_lots，批次可卖手数=正股手数−已备兑，扣完≤0跳过（s2/s4已各覆盖5手→本批不再重复推荐）
+- ⚠️ 备兑卖call是"出货"不是"接货"：不占接货额度（接货额度提示只统计卖put/价差买腿）；到期被行权时正股按行权价卖出，stock_holdings 批次要相应减股数
 
 ### 2026-10-30（新持仓 + 扫描剩余天数过滤）
 

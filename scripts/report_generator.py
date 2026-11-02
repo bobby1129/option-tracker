@@ -19,6 +19,8 @@ def calculate_pnl(position):
                 leg['current_price'] = leg['settlement_price']
     if pos['type'] == 'short_put':
         return calculate_short_put_pnl(pos)
+    if pos['type'] == 'covered_call':
+        return calculate_covered_call_pnl(pos)
     legs = pos['legs']
     long_leg = legs['long']
     short_leg = legs['short']
@@ -182,6 +184,82 @@ def calculate_short_put_pnl(position):
         status = f"⚠️ 进入实值但未破盈亏平衡({breakeven:.4f}≤ETF<{strike})"
     else:
         status = f"❌ 已跌破盈亏平衡(ETF<{breakeven:.4f})"
+
+    return {
+        'open_value': open_value,
+        'current_value': current_value,
+        'pnl': pnl,
+        'pnl_pct': pnl_pct,
+        'delivery_cost': delivery_cost,
+        'max_profit': max_profit,
+        'days_to_expiry': days_to_expiry,
+        'held_days': held_days,
+        'total_days': total_days,
+        'max_return_pct': max_return_pct,
+        'max_annual_return': max_annual_return,
+        'breakeven': breakeven,
+        'safety_margin': safety_margin,
+        'annualized_return': annualized_return,
+        'profit_milestones': profit_milestones,
+        'status': status
+    }
+
+def calculate_covered_call_pnl(position):
+    """
+    计算备兑卖Call（单腿, 有正股覆盖）盈亏
+    - 收入权利金, ETF涨破行权价则正股被叫走(出货, 非接货)
+    - 资金占用口径与 scanner.py 一致: ETF价格 × 合约乘数 × 手数 (正股全额市值)
+    - 出货价 = 行权价; 权利金全部落袋为最大收益(租金口径)
+    """
+    short_leg = position['legs']['short']
+    strike = short_leg['strike']
+    lots = position['lots']
+    multiplier = position['contract_multiplier']
+    open_price = short_leg['open_price']
+    current_price = short_leg['current_price']
+    etf_price = position['current_prices']['underlying']
+
+    open_value = open_price * lots * multiplier          # 已收权利金
+    current_value = current_price * lots * multiplier    # 当前平仓需付
+    pnl = open_value - current_value                     # call跌 → 赚
+    capital = etf_price * multiplier * lots              # 正股全额市值(与scanner一致)
+    pnl_pct = (pnl / capital) * 100 if capital > 0 else 0
+
+    # 最大收益 = 全部权利金(租金口径; 若被行权另有正股出货盈亏, 单独在正股持仓核算)
+    max_profit = open_value
+
+    expiry = datetime.strptime(position['expiry'], '%Y-%m-%d')
+    today = datetime.now()
+    days_to_expiry = (expiry - today).days
+    open_date = position.get('open_date')
+    held_days = (today - datetime.strptime(open_date, '%Y-%m-%d')).days if open_date else None
+    total_days = (expiry - datetime.strptime(open_date, '%Y-%m-%d')).days if open_date else None
+
+    # 安全距离 = 行权价高于现价的空间(涨破才被动出货)
+    safety_margin = (strike - etf_price) / etf_price * 100
+    breakeven = strike          # 出货价=行权价(正股成本另计)
+    delivery_cost = strike      # 复用字段: 此处含义为"被行权出货价"
+
+    if days_to_expiry > 0 and capital > 0:
+        annualized_return = (pnl / capital) * (365 / days_to_expiry) * 100
+    else:
+        annualized_return = 0
+
+    max_return_pct = (max_profit / capital * 100) if capital > 0 else 0
+    max_annual_return = (max_return_pct * 365 / total_days) if total_days and total_days > 0 else None
+
+    profit_milestones = []
+    if max_profit > 0:
+        profit_ratio = pnl / max_profit
+        if profit_ratio >= 0.5:
+            profit_milestones.append(f"✅ 已达最大盈利的50%以上（{profit_ratio*100:.0f}%）")
+        elif profit_ratio >= 0.33:
+            profit_milestones.append(f"✅ 已达最大盈利的33%以上（{profit_ratio*100:.0f}%）")
+
+    if etf_price < strike:
+        status = f"✅ 虚值安全区(ETF<{strike}, 到期不动权利金全收)"
+    else:
+        status = f"⚠️ 已进入实值(ETF≥{strike}), 到期将被行权出货(权利金仍全赚)"
 
     return {
         'open_value': open_value,
@@ -375,7 +453,7 @@ def calc_position_option_pnl(pos):
     lots = pos['lots']
     mult = pos['contract_multiplier']
     settled = pos['status'] in ('expired', 'pending_delivery', 'exercised')
-    if pos['type'] == 'short_put':
+    if pos['type'] in ('short_put', 'covered_call'):
         leg = pos['legs']['short']
         eff_price = leg.get('settlement_price', 0.0) if settled else leg['current_price']
         return (leg['open_price'] - eff_price) * lots * mult
@@ -424,6 +502,8 @@ def calculate_portfolio_summary(positions_data):
         uname = pos.get('underlying_name', pos['underlying'])
         if pos['type'] == 'short_put':
             desc = f"#{pos['id']} {uname} 卖Put {pos['strike']} ({pos['expiry']})"
+        elif pos['type'] == 'covered_call':
+            desc = f"#{pos['id']} {uname} 备兑卖Call {pos['strike']} ({pos['expiry']})"
         else:
             desc = f"#{pos['id']} {uname} {pos['long_strike']}/{pos['short_strike']}价差 ({pos['expiry']})"
         st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零', 'exercised': '被行权(权利金锁定)'}[pos['status']]
@@ -886,20 +966,26 @@ def generate_html_report(positions_data):
         suggestions = generate_suggestion(a, pos)
         held_badge = f"<span class=\"badge\">已持{a['held_days']}天</span>" if a.get('held_days') is not None else ""
         
-        if pos['type'] == 'short_put':
-            # 卖出Put 单腿卡片
+        if pos['type'] in ('short_put', 'covered_call'):
+            # 卖出单腿卡片（卖Put / 备兑卖Call）
+            is_cc = pos['type'] == 'covered_call'
             short_leg = pos['legs']['short']
             short_change = ((short_leg['current_price'] - short_leg['open_price']) / short_leg['open_price']) * 100
-            # 卖put: 价格上涨=不利 → 颜色反转
+            # 卖方: 价格上涨=不利 → 颜色反转
             change_class = 'price-down' if short_change >= 0 else 'price-up'
             uname = pos.get('underlying_name', pos['underlying'])
             status_badge = f"<span class=\"badge\">{a.get('status_badge')}</span>" if a.get('status_badge') else ""
+            strategy_label = f"备兑卖Call {pos['strike']}" if is_cc else f"卖出Put {pos['strike']}"
+            leg_label = "卖出Call" if is_cc else "卖出Put"
+            cost_label = "出货价(行权)" if is_cc else "接货成本"
+            capital_label = "正股市值占用" if is_cc else "保证金占用"
+            safety_label = "距被行权空间" if is_cc else "安全距离"
             html += f"""
         <div class="position-card">
             <h2>
                 组合 #{pos['id']}
                 <span class="badge">{uname}</span>
-                <span class="badge">卖出Put {pos['strike']}</span>
+                <span class="badge">{strategy_label}</span>
                 <span class="badge">{pos['expiry']} 到期</span>
                 <span class="badge">剩{a['days_to_expiry']}天</span>
                 <span class="badge">{pos['lots']}手</span>
@@ -921,7 +1007,7 @@ def generate_html_report(positions_data):
                     </thead>
                     <tbody>
                         <tr>
-                            <td class="direction-sell">卖出Put</td>
+                            <td class="direction-sell">{leg_label}</td>
                             <td>{short_leg['strike']:.2f}</td>
                             <td>{short_leg['open_price']:.4f}</td>
                             <td>{short_leg['current_price']:.4f}</td>
@@ -949,11 +1035,11 @@ def generate_html_report(positions_data):
                     <div class="value {pnl_class}">{'+' if a['pnl'] >= 0 else ''}¥{a['pnl']:,.0f} ({a['pnl_pct']:+.1f}%)</div>
                 </div>
                 <div class="metric">
-                    <div class="label">接货成本</div>
+                    <div class="label">{cost_label}</div>
                     <div class="value">¥{a['delivery_cost']:.4f}</div>
                 </div>
                 <div class="metric">
-                    <div class="label">安全距离</div>
+                    <div class="label">{safety_label}</div>
                     <div class="value {'profit' if a['safety_margin'] >= 5 else 'loss' if a['safety_margin'] < 0 else 'neutral'}">{a['safety_margin']:+.1f}%</div>
                 </div>
                 <div class="metric">
@@ -965,7 +1051,7 @@ def generate_html_report(positions_data):
                     <div class="value profit">{a['max_return_pct']:.1f}%{f" · 年化{a['max_annual_return']:.0f}%" if a.get('max_annual_return') else ""}</div>
                 </div>
                 <div class="metric">
-                    <div class="label">年化收益率(按保证金)</div>
+                    <div class="label">年化收益率(按{capital_label})</div>
                     <div class="value {pnl_class}">{a['annualized_return']:+.1f}%</div>
                 </div>
                 <div class="metric">
@@ -1184,6 +1270,9 @@ def run_analysis():
             if pos['type'] == 'short_put':
                 print(f"组合#{pos['id']} ({pos.get('underlying_name','')} 卖Put {pos['strike']} {pos['expiry']}, {pos['lots']}手, 剩{analysis['days_to_expiry']}天{held}){mark}:")
                 print(f"  权利金收入: ¥{analysis['open_value']:,.0f}, 当前平仓成本: ¥{analysis['current_value']:,.0f}")
+            elif pos['type'] == 'covered_call':
+                print(f"组合#{pos['id']} ({pos.get('underlying_name','')} 备兑卖Call {pos['strike']} {pos['expiry']}, {pos['lots']}手, 剩{analysis['days_to_expiry']}天{held}){mark}:")
+                print(f"  权利金收入: ¥{analysis['open_value']:,.0f}, 当前平仓成本: ¥{analysis['current_value']:,.0f}, 被行权出货价: {pos['strike']}")
             else:
                 print(f"组合#{pos['id']} ({pos.get('underlying_name','')} {pos['long_strike']}/{pos['short_strike']}, 剩{analysis['days_to_expiry']}天{held}){mark}:")
                 print(f"  开仓: ¥{analysis['open_value']:,.0f}, 当前: ¥{analysis['current_value']:,.0f}")

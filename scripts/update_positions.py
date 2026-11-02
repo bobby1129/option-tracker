@@ -88,6 +88,14 @@ def main():
                 print(f"  组合#{pos['id']} short put@{strike}: {p:.4f}")
             else:
                 print(f"  ⚠️ 组合#{pos['id']}: put@{strike} 不在链中")
+        elif pos['type'] == 'covered_call':
+            strike = str(pos['strike'])
+            if strike in calls:
+                p = mid_price(calls[strike])
+                pos['legs']['short']['current_price'] = round(p, 4)
+                print(f"  组合#{pos['id']} covered call@{strike}: {p:.4f}")
+            else:
+                print(f"  ⚠️ 组合#{pos['id']}: call@{strike} 不在链中")
         else:
             print(f"  ⚠️ 组合#{pos['id']}: 未知类型 {pos['type']}，跳过")
             continue
