@@ -350,8 +350,62 @@ def generate_suggestion(analysis, position):
     
     return suggestions
 
-def load_trades_stats():
-    """读取 data/trades.json, 计算历史战绩统计。文件不存在/为空返回 None"""
+def build_roll_chains(positions_data):
+    """按 roll_from/roll_to 字段把展期组合串成链（与行权价/到期月无关，只认组合id）。
+    返回 (chains, member):
+    - chains = {head_id: {'ids': [按展期顺序的组合id], 'positions': [...], 'tail': 链尾position}}
+    - member = {任意链上组合id: head_id}
+    """
+    pos_by_id = {p['id']: p for p in positions_data['positions']}
+    chains = {}
+    for p in positions_data['positions']:
+        if p.get('roll_to') and not p.get('roll_from'):
+            ids = [p['id']]
+            cur = p
+            while cur.get('roll_to'):
+                nxt = pos_by_id.get(cur['roll_to'])
+                if not nxt:
+                    break
+                ids.append(nxt['id'])
+                cur = nxt
+            chains[p['id']] = {'ids': ids, 'tail': cur,
+                               'positions': [pos_by_id[i] for i in ids if i in pos_by_id]}
+    member = {}
+    for head, ch in chains.items():
+        for i in ch['ids']:
+            member[i] = head
+    return chains, member
+
+
+def _pos_period_desc(pos):
+    """展期链单期描述: 策略+行权价+到期日"""
+    if pos['type'] == 'short_put':
+        return f"卖Put {pos['strike']} {pos['expiry']}"
+    if pos['type'] == 'covered_call':
+        return f"备兑卖Call {pos['strike']} {pos['expiry']}"
+    return f"{pos.get('long_strike')}/{pos.get('short_strike')}价差 {pos['expiry']}"
+
+
+def _pos_period_price_str(pos):
+    """展期链单期价格串: 开仓→平仓/结算/现价"""
+    leg = pos['legs'].get('short') or pos['legs'].get('long')
+    op = leg['open_price']
+    if leg.get('status') == 'closed':
+        return f"{op:.4f}→{leg['close_price']:.4f}"
+    if 'settlement_price' in leg:
+        return f"{op:.4f}→结算{leg['settlement_price']:.4f}"
+    return f"{op:.4f}→现{leg['current_price']:.4f}"
+
+
+def load_trades_stats(positions_data=None):
+    """读取 data/trades.json, 计算历史战绩统计。文件不存在/为空返回 None。
+
+    展期链归并口径（2026-11-20起）:
+    - roll_from/roll_to 串成的链视为一笔逻辑交易: 链合计 = 链上全部已实现流水 + 链尾浮动(若仍持仓)
+    - 笔数/胜率/平均单笔按逻辑交易计: 独立平仓每笔算1, 已了结的链整条算1(按链合计盈亏定胜负)
+    - 链尾仍持仓 = 进行中, 不计入胜率(与未了结的普通交易同口径), 单独展示
+    - 累计已实现盈亏 total_pnl 保持真实现金流口径不变(全部流水求和)
+    """
     trades_file = Path(__file__).parent.parent / 'data' / 'trades.json'
     if not trades_file.exists():
         return None
@@ -360,8 +414,45 @@ def load_trades_stats():
     trades = data.get('trades', [])
     if not trades:
         return None
-    pnls = [t['pnl_net'] for t in trades]
-    wins = [p for p in pnls if p > 0]
+
+    # ---- 展期链归并 ----
+    chains, member = build_roll_chains(positions_data) if positions_data else ({}, {})
+    chain_items = []
+    for head, ch in sorted(chains.items()):
+        realized = sum(t['pnl_net'] for t in trades if t['position_id'] in ch['ids'])
+        tail = ch['tail']
+        floating = None
+        if tail['status'] == 'open':
+            # 链尾浮动 = 组合浮动盈亏 - 链尾自身已入账的已实现流水(避免部分平仓双计)
+            tail_realized = sum(t['pnl_net'] for t in trades if t['position_id'] == tail['id'])
+            floating = calc_position_option_pnl(tail) - tail_realized
+        settled = floating is None
+        total = realized + (floating or 0.0)
+        periods = []
+        for pid in ch['ids']:
+            pos = next((p for p in ch['positions'] if p['id'] == pid), None)
+            if pos is None:
+                continue
+            p_realized = sum(t['pnl_net'] for t in trades if t['position_id'] == pid)
+            if pos['status'] == 'open':
+                p_pnl, kind = p_realized + ((floating or 0.0) if pid == tail['id'] else 0.0), 'floating'
+                # open期的已实现部分(若有)+浮动, 展示为浮动
+                if p_realized and pid == tail['id']:
+                    kind = 'mixed'
+            else:
+                p_pnl, kind = p_realized, 'realized'
+            periods.append({'id': pid, 'desc': _pos_period_desc(pos),
+                            'price_str': _pos_period_price_str(pos),
+                            'pnl': p_pnl, 'kind': kind})
+        chain_items.append({'head': head, 'ids': ch['ids'], 'rolls': len(ch['ids']) - 1,
+                            'realized': realized, 'floating': floating, 'total': total,
+                            'settled': settled, 'periods': periods})
+
+    # ---- 逻辑交易单元: 独立流水 + 已了结链 ----
+    indep = [t for t in trades if t['position_id'] not in member]
+    counted = [t['pnl_net'] for t in indep] + [c['total'] for c in chain_items if c['settled']]
+    wins = [p for p in counted if p > 0]
+
     by_underlying = {}
     for t in trades:
         u = by_underlying.setdefault(t.get('underlying_name', t.get('underlying', '?')),
@@ -370,28 +461,76 @@ def load_trades_stats():
         u['pnl'] += t['pnl_net']
     return {
         'trades': sorted(trades, key=lambda t: t['date'], reverse=True),
-        'count': len(trades),
-        'total_pnl': sum(pnls),
-        'win_rate': len(wins) / len(trades) * 100,
-        'avg_pnl': sum(pnls) / len(pnls),
-        'max_win': max(pnls),
-        'max_loss': min(pnls),
+        'count': len(counted),
+        'indep_count': len(indep),
+        'chain_items': chain_items,
+        'chains_settled': sum(1 for c in chain_items if c['settled']),
+        'chains_open': sum(1 for c in chain_items if not c['settled']),
+        'member': member,
+        'total_pnl': sum(t['pnl_net'] for t in trades),  # 现金口径不变
+        'win_rate': (len(wins) / len(counted) * 100) if counted else 0.0,
+        'avg_pnl': (sum(counted) / len(counted)) if counted else 0.0,
+        'max_win': max(counted) if counted else 0.0,
+        'max_loss': min(counted) if counted else 0.0,
         'by_underlying': by_underlying,
     }
 
 
 def build_history_section(stats):
-    """生成'历史战绩'HTML区块"""
+    """生成'历史战绩'HTML区块（含展期链归并展示）"""
     if not stats:
         return ""
     pnl_class = 'profit' if stats['total_pnl'] >= 0 else 'loss'
     underlying_line = ' · '.join(
         f"{name}: {u['count']}笔 {'+' if u['pnl'] >= 0 else ''}¥{u['pnl']:,.0f}"
         for name, u in sorted(stats['by_underlying'].items()))
-    
+
+    def sign_cls(v):
+        return f"<span class=\"{'profit' if v >= 0 else 'loss'}\">{'+' if v >= 0 else ''}¥{v:,.0f}</span>"
+
+    # ---- 展期链区块（每期一行明细 + 链合计；未了结的链标进行中不计胜率） ----
+    chain_html = ""
+    for c in stats.get('chain_items', []):
+        ids_str = '→'.join(f"#{i}" for i in c['ids'])
+        state = ('已了结, 计入胜率' if c['settled'] else '⏳进行中, 不计胜率')
+        state_cls = 'neutral' if c['settled'] else 'highlight'
+        rows = ""
+        for idx, p in enumerate(c['periods'], 1):
+            kind_lbl = '已实现' if p['kind'] == 'realized' else ('浮动' if p['kind'] == 'floating' else '已实现+浮动')
+            rows += f"""
+                <tr>
+                    <td>第{idx}期 #{p['id']}</td>
+                    <td>{p['desc']}</td>
+                    <td>{p['price_str']}</td>
+                    <td>{kind_lbl}</td>
+                    <td>{sign_cls(p['pnl'])}</td>
+                </tr>"""
+        float_str = sign_cls(c['floating']) if c['floating'] is not None else '—'
+        chain_html += f"""
+            <div style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.03);border-radius:8px">
+                <div style="font-size:13px;margin-bottom:6px">🔄 展期链 {ids_str}（展期{c['rolls']}次）
+                    <span class="{state_cls}" style="margin-left:8px">{state}</span></div>
+                <table class="delivery-table">
+                    <thead><tr><th>期数</th><th>合约</th><th>价格</th><th>口径</th><th>盈亏</th></tr></thead>
+                    <tbody>{rows}
+                        <tr>
+                            <td colspan="2"><b>链合计</b></td>
+                            <td colspan="2">已实现{sign_cls(c['realized'])} + 浮动 {float_str}</td>
+                            <td><b>{sign_cls(c['total'])}</b></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>"""
+
     recent_rows = ""
-    ACTION_LABEL = {'close_short_leg': '平卖腿', 'close_position': '整组平仓', 'close_short_put': '平卖Put', 'expired_worthless': '到期归零', 'exercised': '被行权'}
-    for t in stats['trades'][:5]:
+    ACTION_LABEL = {'close_short_leg': '平卖腿', 'close_position': '整组平仓', 'close_short_put': '平卖Put', 'close': '平仓', 'expired_worthless': '到期归零', 'exercised': '被行权'}
+    member = stats.get('member', {})
+    shown = 0
+    for t in stats['trades']:
+        if shown >= 5:
+            break
+        if t['position_id'] in member:
+            continue  # 展期链流水已在链区块展示, 不再重复进"最近5笔"
         t_class = 'profit' if t['pnl_net'] >= 0 else 'loss'
         label = f"{t.get('underlying_name','')} {ACTION_LABEL.get(t.get('action'), t.get('action',''))} {t['strike']}{t.get('option_type','')[:1].upper()}"
         recent_rows += f"""
@@ -401,21 +540,27 @@ def build_history_section(stats):
                     <td>{t['open_price']:.4f} → {t['close_price']:.4f} ×{t['lots']}</td>
                     <td class="{t_class}">{'+' if t['pnl_net'] >= 0 else ''}¥{t['pnl_net']:,.0f}</td>
                 </tr>"""
-    
+        shown += 1
+
+    count_note = ''
+    if stats.get('chain_items'):
+        count_note = (f"<div class=\"delivery-note\">笔数口径: 独立平仓{stats['indep_count']}笔"
+                      f" + 已了结展期链{stats['chains_settled']}条; 进行中展期链{stats['chains_open']}条不计入胜率</div>")
+
     return f"""
         <div class="delivery-section">
             <h3>📜 历史战绩（已实现平仓）</h3>
             <div class="metrics-grid" style="margin-bottom:12px">
                 <div class="metric">
-                    <div class="label">累计平仓</div>
+                    <div class="label">累计平仓(逻辑交易)</div>
                     <div class="value">{stats['count']}笔</div>
                 </div>
                 <div class="metric">
-                    <div class="label">累计已实现盈亏</div>
+                    <div class="label">累计已实现盈亏(现金)</div>
                     <div class="value {pnl_class}">{'+' if stats['total_pnl'] >= 0 else ''}¥{stats['total_pnl']:,.0f}</div>
                 </div>
                 <div class="metric">
-                    <div class="label">胜率</div>
+                    <div class="label">胜率(已了结)</div>
                     <div class="value">{stats['win_rate']:.0f}%</div>
                 </div>
                 <div class="metric">
@@ -431,6 +576,8 @@ def build_history_section(stats):
                     <div class="value {'loss' if stats['max_loss'] < 0 else 'neutral'}">{'+' if stats['max_loss'] >= 0 else ''}¥{stats['max_loss']:,.0f}</div>
                 </div>
             </div>
+            {count_note}
+            {chain_html}
             <div class="delivery-note" style="margin-bottom:10px">按标的: {underlying_line}（盈亏为净额, 已扣交易成本）</div>
             <table class="delivery-table">
                 <thead>
@@ -439,9 +586,24 @@ def build_history_section(stats):
                 <tbody>{recent_rows}
                 </tbody>
             </table>
-            <div class="delivery-note">最近5笔 · 完整流水见 data/trades.json</div>
+            <div class="delivery-note">最近5笔独立平仓 · 完整流水见 data/trades.json</div>
         </div>
 """
+
+
+def build_roll_chain_info(positions_data):
+    """展期链角标信息 {pos_id: {ids, idx(1-based期数), rolls, total(链合计=已实现+浮动), settled}}。
+    链合计用 calc_position_option_pnl 逐期求和（closed期按平仓价锁定扣费, 与trades.json口径一致;
+    open期含浮动）。"""
+    chains, _ = build_roll_chains(positions_data)
+    info = {}
+    for head, ch in chains.items():
+        total = sum(calc_position_option_pnl(pos) for pos in ch['positions'])
+        settled = ch['tail']['status'] != 'open'
+        for idx, pid in enumerate(ch['ids'], 1):
+            info[pid] = {'ids': ch['ids'], 'idx': idx, 'rolls': len(ch['ids']) - 1,
+                         'total': total, 'settled': settled}
+    return info
 
 
 def calc_position_option_pnl(pos):
@@ -455,6 +617,9 @@ def calc_position_option_pnl(pos):
     settled = pos['status'] in ('expired', 'pending_delivery', 'exercised')
     if pos['type'] in ('short_put', 'covered_call'):
         leg = pos['legs']['short']
+        if pos['status'] == 'closed':
+            # 已平仓: 按平仓价锁定, 扣平仓手续费(7元/手)
+            return (leg['open_price'] - leg['close_price']) * lots * mult - 7.0 * lots
         eff_price = leg.get('settlement_price', 0.0) if settled else leg['current_price']
         return (leg['open_price'] - eff_price) * lots * mult
     long_leg = pos['legs']['long']
@@ -495,7 +660,7 @@ def calculate_portfolio_summary(positions_data):
     opt_items = []
     opt_total = 0.0
     for pos in positions_data['positions']:
-        if pos['status'] not in ('open', 'pending_delivery', 'expired', 'exercised'):
+        if pos['status'] not in ('open', 'pending_delivery', 'expired', 'exercised', 'closed'):
             continue
         pnl = calc_position_option_pnl(pos)
         opt_total += pnl
@@ -506,7 +671,7 @@ def calculate_portfolio_summary(positions_data):
             desc = f"#{pos['id']} {uname} 备兑卖Call {pos['strike']} ({pos['expiry']})"
         else:
             desc = f"#{pos['id']} {uname} {pos['long_strike']}/{pos['short_strike']}价差 ({pos['expiry']})"
-        st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零', 'exercised': '被行权(权利金锁定)'}[pos['status']]
+        st = {'open': '浮动', 'pending_delivery': '待行权结算', 'expired': '到期归零', 'exercised': '被行权(权利金锁定)', 'closed': '已平仓(锁定)'}[pos['status']]
         opt_items.append({'desc': desc, 'pnl': pnl, 'state': st})
     # ② 接货
     dlv_items = []
@@ -616,8 +781,20 @@ def generate_html_report(positions_data):
     total_current = 0
     total_pnl = 0
     
-    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised')
-    STATUS_BADGE = {'pending_delivery': '⏳ 待行权交割', 'expired': '🔚 到期归零', 'exercised': '✅ 已行权交割'}
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised', 'closed')
+    STATUS_BADGE = {'pending_delivery': '⏳ 待行权交割', 'expired': '🔚 到期归零', 'exercised': '✅ 已行权交割', 'closed': '💰 已平仓'}
+    roll_info = build_roll_chain_info(positions_data)
+
+    def _roll_badge(pid):
+        r = roll_info.get(pid)
+        if not r:
+            return ''
+        ids_str = '→'.join(f"#{i}" for i in r['ids'])
+        if r['settled']:
+            return f"<span class=\"badge\">🔄 展期链{ids_str} 第{r['idx']}期 链合计{'+' if r['total'] >= 0 else ''}¥{r['total']:,.0f}</span>"
+        tail_mark = '(链尾)' if r['idx'] == len(r['ids']) else f"(已展期至#{r['ids'][r['idx']]})"
+        return f"<span class=\"badge\">🔄 展期链{ids_str} 第{r['idx']}期{tail_mark} 链合计{'+' if r['total'] >= 0 else ''}¥{r['total']:,.0f} ⏳</span>"
+
     import copy as _copy
     for pos in positions_data['positions']:
         if pos['status'] in ACTIVE_STATUS:
@@ -627,9 +804,16 @@ def generate_html_report(positions_data):
                 for leg in pos['legs'].values():
                     if 'settlement_price' in leg and leg.get('status') != 'closed':
                         leg['current_price'] = leg['settlement_price']
+            elif pos['status'] == 'closed':
+                # 已平仓组合: 卡片按平仓价锁定
+                pos = _copy.deepcopy(pos)
+                for leg in pos['legs'].values():
+                    if leg.get('status') == 'closed':
+                        leg['current_price'] = leg['close_price']
             analysis = calculate_pnl(pos)
             analysis['position'] = pos
             analysis['status_badge'] = STATUS_BADGE.get(pos['status'], '')
+            analysis['roll_badge'] = _roll_badge(pos['id'])
             analyses.append(analysis)
             total_open += analysis['open_value']
             total_current += analysis['current_value']
@@ -682,7 +866,7 @@ def generate_html_report(positions_data):
             </tr>"""
     
     # 生成HTML
-    history_section = build_history_section(load_trades_stats())
+    history_section = build_history_section(load_trades_stats(positions_data))
     html = f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -975,6 +1159,7 @@ def generate_html_report(positions_data):
             change_class = 'price-down' if short_change >= 0 else 'price-up'
             uname = pos.get('underlying_name', pos['underlying'])
             status_badge = f"<span class=\"badge\">{a.get('status_badge')}</span>" if a.get('status_badge') else ""
+            roll_badge = a.get('roll_badge', '')
             strategy_label = f"备兑卖Call {pos['strike']}" if is_cc else f"卖出Put {pos['strike']}"
             leg_label = "卖出Call" if is_cc else "卖出Put"
             cost_label = "出货价(行权)" if is_cc else "接货成本"
@@ -991,6 +1176,7 @@ def generate_html_report(positions_data):
                 <span class="badge">{pos['lots']}手</span>
                 {held_badge}
                 {status_badge}
+                {roll_badge}
             </h2>
             
             <div class="legs-section">
@@ -1069,6 +1255,7 @@ def generate_html_report(positions_data):
             short_change = ((short_leg.get('close_price', short_leg['current_price']) - short_leg['open_price']) / short_leg['open_price']) * 100
             strategy_badge = f"单腿买Call {pos['long_strike']} (价差卖出腿已平)" if short_closed else f"牛市价差 {pos['long_strike']}/{pos['short_strike']}"
             status_badge2 = f"<span class=\"badge\">{a.get('status_badge')}</span>" if a.get('status_badge') else ""
+            roll_badge2 = a.get('roll_badge', '')
             
             html += f"""
         <div class="position-card">
@@ -1081,6 +1268,7 @@ def generate_html_report(positions_data):
                 <span class="badge">{pos['lots']}组</span>
                 {held_badge}
                 {status_badge2}
+                {roll_badge2}
             </h2>
 """
             # 卖出腿行（已平显示平仓标记）
@@ -1254,8 +1442,9 @@ def run_analysis():
     
     total_pnl = 0
     import copy as _copy2
-    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised')
-    STATUS_MARK = {'pending_delivery': ' [⏳待行权交割]', 'expired': ' [🔚到期归零]', 'exercised': ' [✅已行权交割]'}
+    ACTIVE_STATUS = ('open', 'pending_delivery', 'expired', 'exercised', 'closed')
+    STATUS_MARK = {'pending_delivery': ' [⏳待行权交割]', 'expired': ' [🔚到期归零]', 'exercised': ' [✅已行权交割]', 'closed': ' [💰已平仓]'}
+    roll_info = build_roll_chain_info(positions_data)
     for pos in positions_data['positions']:
         if pos['status'] in ACTIVE_STATUS:
             raw_pos = pos
@@ -1264,6 +1453,11 @@ def run_analysis():
                 for leg in pos['legs'].values():
                     if 'settlement_price' in leg and leg.get('status') != 'closed':
                         leg['current_price'] = leg['settlement_price']
+            elif pos['status'] == 'closed':
+                pos = _copy2.deepcopy(pos)
+                for leg in pos['legs'].values():
+                    if leg.get('status') == 'closed':
+                        leg['current_price'] = leg['close_price']
             analysis = calculate_pnl(pos)
             held = f", 已持{analysis['held_days']}天" if analysis.get('held_days') is not None else ""
             mark = STATUS_MARK.get(raw_pos['status'], '')
@@ -1285,6 +1479,12 @@ def run_analysis():
                 print(f"  最大收益: 上不封顶(单腿买Call, 价差卖出腿已平)")
             print(f"  安全距离: {analysis['safety_margin']:+.1f}%, 当前年化: {analysis['annualized_return']:+.1f}%")
             print(f"  状态: {analysis['status']}")
+            r = roll_info.get(raw_pos['id'])
+            if r:
+                ids_str = '→'.join(f"#{i}" for i in r['ids'])
+                st = '已了结' if r['settled'] else '⏳进行中(不计胜率)'
+                tail_mark = '' if r['idx'] == len(r['ids']) else f", 已展期至#{r['ids'][r['idx']]}"
+                print(f"  🔄 展期链{ids_str} 第{r['idx']}期/{len(r['ids'])}期{tail_mark} · 链合计{'+' if r['total'] >= 0 else ''}¥{r['total']:,.0f} [{st}]")
             rw = pos.get('rewatch') or {}
             if rw.get('current_price') is not None and rw.get('triggers'):
                 t1 = min(rw['triggers'])
@@ -1314,13 +1514,32 @@ def run_analysis():
     print(f"  ③ 总体盈亏(①+②): {'+' if ps['total_pnl'] >= 0 else ''}¥{ps['total_pnl']:,.0f}")
     print("=" * 52)
     
-    # 历史战绩 (已实现平仓)
-    stats = load_trades_stats()
+    # 历史战绩 (已实现平仓, 展期链归并)
+    stats = load_trades_stats(positions_data)
     if stats:
         print()
-        print(f"📜 历史战绩: 累计平仓{stats['count']}笔, 已实现{'+' if stats['total_pnl'] >= 0 else ''}¥{stats['total_pnl']:,.0f}, 胜率{stats['win_rate']:.0f}%, 平均单笔{'+' if stats['avg_pnl'] >= 0 else ''}¥{stats['avg_pnl']:,.0f}")
-        for t in stats['trades'][:3]:
+        count_note = f"累计平仓{stats['count']}笔"
+        if stats.get('chain_items'):
+            count_note += f"(独立{stats['indep_count']}笔+已了结展期链{stats['chains_settled']}条)"
+        print(f"📜 历史战绩: {count_note}, 已实现(现金){'+' if stats['total_pnl'] >= 0 else ''}¥{stats['total_pnl']:,.0f}, 胜率(已了结){stats['win_rate']:.0f}%, 平均单笔{'+' if stats['avg_pnl'] >= 0 else ''}¥{stats['avg_pnl']:,.0f}")
+        for c in stats.get('chain_items', []):
+            ids_str = '→'.join(f"#{i}" for i in c['ids'])
+            state = '已了结' if c['settled'] else '⏳进行中不计胜率'
+            print(f"  🔄 展期链 {ids_str} (展期{c['rolls']}次, {state}):")
+            for idx, p in enumerate(c['periods'], 1):
+                kind_lbl = '已实现' if p['kind'] == 'realized' else ('浮动' if p['kind'] == 'floating' else '已实现+浮动')
+                print(f"    第{idx}期 #{p['id']} {p['desc']} {p['price_str']} [{kind_lbl}] {'+' if p['pnl'] >= 0 else ''}¥{p['pnl']:,.0f}")
+            flt = f"{'+' if c['floating'] >= 0 else ''}¥{c['floating']:,.0f}" if c['floating'] is not None else '—'
+            print(f"    链合计: 已实现{'+' if c['realized'] >= 0 else ''}¥{c['realized']:,.0f} + 浮动{flt} = {'+' if c['total'] >= 0 else ''}¥{c['total']:,.0f}")
+        member = stats.get('member', {})
+        shown = 0
+        for t in stats['trades']:
+            if shown >= 3:
+                break
+            if t['position_id'] in member:
+                continue
             print(f"  {t['date']} {t.get('underlying_name','')} {t['strike']}{t.get('option_type','')[:1].upper()} {t['open_price']:.4f}→{t['close_price']:.4f} ×{t['lots']}: {'+' if t['pnl_net'] >= 0 else ''}¥{t['pnl_net']:,.0f}")
+            shown += 1
     
     # 接货额度提示 (按到期日)
     delivery_by_expiry = {}
